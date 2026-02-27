@@ -12,7 +12,7 @@ from plotly.subplots import make_subplots
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # ==========================================
-# 頁面配置與自訂 CSS (V5)
+# 頁面配置與自訂 CSS
 # ==========================================
 st.set_page_config(page_title="全方位個股掃描系統 V5", layout="wide", page_icon="📈")
 
@@ -34,15 +34,19 @@ st.markdown("""
     .brainless-title { font-size: 0.9rem; font-weight: bold; color: #d4af37; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; }
     .brainless-content { font-size: 1.25rem; font-weight: 700; line-height: 1.5; }
 
-    .squeeze-alert { background: linear-gradient(to right, #ff416c, #ff4b2b); color: white; border-radius: 8px; padding: 12px; margin-bottom: 15px; text-align: center; font-weight: bold;}
-    .margin-call-alert { background: linear-gradient(to right, #8b0000, #4a0000); color: white; border-radius: 8px; padding: 12px; margin-bottom: 15px; text-align: center; font-weight: bold;}
+    .holy-grail-alert { background: linear-gradient(to right, #f6d365, #fda085); color: #856404; border-radius: 8px; padding: 15px; margin-bottom: 15px; text-align: center; font-weight: 900; font-size: 1.2rem; border: 2px solid #e0a800; box-shadow: 0 0 15px rgba(253, 160, 133, 0.5); animation: pulse 2s infinite;}
+    @keyframes pulse { 0% {box-shadow: 0 0 0 0 rgba(253, 160, 133, 0.7);} 70% {box-shadow: 0 0 0 15px rgba(253, 160, 133, 0);} 100% {box-shadow: 0 0 0 0 rgba(253, 160, 133, 0);} }
+
+    .pa-card { background-color: #fcfcfc; border: 1px solid #e9ecef; border-radius: 10px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); height: 100%;}
+    .pa-title { font-size: 1.1rem; font-weight: 900; color: #343a40; margin-bottom: 15px; border-bottom: 2px solid #dee2e6; padding-bottom: 10px;}
+    .pa-item-active { background-color: #fff3cd; color: #856404; border-left: 5px solid #ffc107; padding: 10px; margin-bottom: 8px; border-radius: 4px; font-weight: bold; font-size: 0.9rem;}
+    .pa-item-danger { background-color: #f8d7da; color: #842029; border-left: 5px solid #dc3545; padding: 10px; margin-bottom: 8px; border-radius: 4px; font-weight: bold; font-size: 0.9rem;}
+    .pa-item-inactive { color: #adb5bd; padding: 6px 10px; margin-bottom: 6px; font-size: 0.85rem; border-left: 3px solid #e9ecef;}
+
     .atm-alert { background: linear-gradient(to right, #ffc107, #ff9800); color: #000; border-radius: 8px; padding: 12px; margin-bottom: 15px; text-align: center; font-weight: bold;}
-
     .disclaimer { text-align: center; color: #6c757d; font-size: 0.85rem; padding: 10px; margin-bottom: 25px; border-bottom: 1px dashed #dee2e6; }
-
     .exec-table th { color: #fff; text-align: center; vertical-align: middle;}
     .exec-table td { vertical-align: middle; line-height: 1.6; }
-
     .hist-table th { position: sticky; top: 0; background-color: #1a252f !important; color: white !important; z-index: 10; text-align: center;}
     .hist-table td { text-align: center; vertical-align: middle; font-size: 0.95rem;}
     .badge-hist { font-size: 0.85rem; padding: 4px 8px; border-radius: 4px; }
@@ -53,9 +57,8 @@ st.markdown("""
 # ==========================================
 # 核心邏輯模組
 # ==========================================
-@st.cache_data(ttl=86400)  # 快取一天，避免重複爬取
+@st.cache_data(ttl=86400)
 def get_stock_name(ticker):
-    """【修正Bug 2】：從 Yahoo 奇摩股市爬取即時的中文股票名稱"""
     clean_ticker = ticker.replace('.TW', '').replace('.TWO', '')
     try:
         url = f"https://tw.stock.yahoo.com/quote/{clean_ticker}"
@@ -100,7 +103,10 @@ def get_trend_shape(series):
         return "震盪平移 →"
 
 
-def calculate_ab_rankings(c_price, ma20_val, ma20_shape, rsi_shape, mfi_shape):
+def calculate_ab_rankings(c_price, ma20_val, ma20_shape, rsi_shape, mfi_shape, is_holy_grail=False, pa_penalty=0):
+    if is_holy_grail:
+        return "S+", "極致壓縮後強勢表態", "S+", "資金點火且OBV創高", "🌟 聖杯型態 (極致壓縮爆發)", "符合四大嚴格量化條件：壓縮、出量、破軌、資金湧入！此為勝率最高之起漲點型態。"
+
     ma_up = "上揚" in ma20_shape or "向上" in ma20_shape
     ma_down = "向下" in ma20_shape
 
@@ -120,6 +126,9 @@ def calculate_ab_rankings(c_price, ma20_val, ma20_shape, rsi_shape, mfi_shape):
         b_rank, b_desc = "B-", "RSI/MFI 賣壓動能共振向下"
     else:
         b_rank, b_desc = "B", "RSI/MFI 動能分歧或平移震盪"
+
+    if pa_penalty > 0:
+        return a_rank, a_desc, "B-", "裸K動能轉弱覆寫", "⚠️ 裸 K 價格行為警告", "雖然指標尚未翻轉，但 K 線實體已出現出貨或誘多特徵，請高度警戒！"
 
     if a_rank == "A+" and b_rank == "B+":
         title, msg = "趨勢動能共振 (強勢攻擊)", "大結構偏多且短線買盤強勁，標準主升段攻擊架構，順勢抱緊。"
@@ -182,7 +191,7 @@ def fetch_macro_and_adr():
         return False, "國際市場連動數據暫時無法獲取", 0, 10
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=60)
 def fetch_chip_data(stock_id):
     url = "https://api.finmindtrade.com/api/v4/data"
     end_date = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -191,12 +200,12 @@ def fetch_chip_data(stock_id):
               "end_date": end_date}
     try:
         res = requests.get(url, params=params, timeout=5).json()
-        if not res.get("data"): return 0, 0, 0, 0, 0, 0, 15
+        if not res.get("data"): return 0, 0, 0, 0, 0, 0, 15, False
         df = pd.DataFrame(res["data"])
         df['Net_Buy'] = (df['buy'] - df['sell']) / 1000
         pivot = df.pivot_table(index='date', columns='name', values='Net_Buy', aggfunc='sum').fillna(0)
         pivot = pivot[(pivot.T != 0).any()]
-        if pivot.empty: return 0, 0, 0, 0, 0, 0, 15
+        if pivot.empty: return 0, 0, 0, 0, 0, 0, 15, False
 
         f_series = pivot.get('Foreign_Investor', pd.Series([0]))
         t_series = pivot.get('Investment_Trust', pd.Series([0]))
@@ -227,14 +236,13 @@ def fetch_chip_data(stock_id):
             flow_score -= 5
         flow_score = max(0, min(30, flow_score))
 
-        return f_buy_latest, t_buy_latest, f_days, t_days, f_cumsum, t_cumsum, flow_score
+        return f_buy_latest, t_buy_latest, f_days, t_days, f_cumsum, t_cumsum, flow_score, True
     except:
-        return 0, 0, 0, 0, 0, 0, 15
+        return 0, 0, 0, 0, 0, 0, 15, False
 
 
 @st.cache_data(ttl=300)
 def fetch_data(ticker):
-    # 【修正Bug 1】：支援上櫃自動 fallback 判定
     query_ticker = f"{ticker}.TW" if not ticker.endswith(('.TW', '.TWO')) else ticker
     df = yf.download(query_ticker, period="1y", progress=False, auto_adjust=True)
 
@@ -243,9 +251,7 @@ def fetch_data(ticker):
         df = yf.download(query_ticker, period="1y", progress=False, auto_adjust=True)
 
     if df.empty: return None
-
     stock_name = get_stock_name(ticker)
-
     if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
 
     df['MA5'] = df['Close'].rolling(5).mean()
@@ -254,11 +260,13 @@ def fetch_data(ticker):
     df['MA60'] = df['Close'].rolling(60).mean()
     df['MA111'] = df['Close'].rolling(111).mean()
     df['MV5'] = df['Volume'].rolling(5).mean()
+    df['MV20'] = df['Volume'].rolling(20).mean()
     df['TP'] = (df['High'] + df['Low'] + df['Close']) / 3
 
     std = df['Close'].rolling(20).std()
     df['BBU'] = df['MA20'] + (2 * std)
     df['BBL'] = df['MA20'] - (2 * std)
+    df['BBW'] = (df['BBU'] - df['BBL']) / df['MA20'] * 100
 
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(14).mean()
@@ -266,6 +274,8 @@ def fetch_data(ticker):
     df['RSI'] = 100 - (100 / (1 + gain / loss.replace(0, 1e-10)))
 
     df['OBV'] = (np.sign(df['Close'].diff()) * df['Volume']).fillna(0).cumsum()
+    df['OBV_Diff'] = df['OBV'].diff()
+
     raw_mf = df['TP'] * df['Volume']
     pos_flow = raw_mf.where(df['TP'] > df['TP'].shift(1), 0).rolling(14).sum()
     neg_flow = raw_mf.where(df['TP'] < df['TP'].shift(1), 0).rolling(14).sum()
@@ -282,7 +292,7 @@ def fetch_data(ticker):
     latest = df.iloc[-1]
     prev = df.iloc[-2]
 
-    f_buy, t_buy, f_days, t_days, f_cumsum, t_cumsum, flow_score = fetch_chip_data(
+    f_buy, t_buy, f_days, t_days, f_cumsum, t_cumsum, flow_score, chip_ok = fetch_chip_data(
         ticker.replace('.TW', '').replace('.TWO', ''))
     atm_risk, macro_msg, tsm_pct, macro_score = fetch_macro_and_adr()
 
@@ -291,28 +301,80 @@ def fetch_data(ticker):
     mfi_shape = get_trend_shape(df['MFI'])
     obv_shape = get_trend_shape(df['OBV'])
 
+    # ======= [V5] 裸 K 價格行為 (Price Action) 掃描 =======
+    pa_flags = {
+        "pa1_no_limit": False, "pa2_gap_down": False, "pa3_engulf": False,
+        "pa4_stagnant": False, "pa5_trap": False, "pa6_ma_break": False
+    }
+
+    upperShadow = latest['High'] - max(latest['Open'], latest['Close'])
+    realBody = abs(latest['Close'] - latest['Open'])
+
+    if len(df) >= 5:
+        # 1. 拉伸+7%不漲停是撤退訊號
+        pa_flags["pa1_no_limit"] = (latest['High'] >= prev['Close'] * 1.07) and (
+                    latest['Close'] < prev['Close'] * 1.095) and (upperShadow > realBody * 0.5)
+        # 2. 低開 3% 無反彈
+        pa_flags["pa2_gap_down"] = (latest['Open'] <= prev['Close'] * 0.97) and (
+                    latest['Close'] <= latest['Open']) and (latest['Volume'] > latest['MV5'])
+        # 3. 高開低走中翻綠
+        pa_flags["pa3_engulf"] = (latest['Open'] > prev['Close']) and (latest['Close'] < prev['Close'])
+        # 4. 高位三天不破前高
+        high_4th = df['High'].iloc[-4]
+        recent_3_highs_max = df['High'].iloc[-3:].max()
+        recent_3_vol_avg = df['Volume'].iloc[-3:].mean()
+        pa_flags["pa4_stagnant"] = (latest['Close'] > latest['MA20']) and (latest['RSI'] > 60) and (
+                    recent_3_highs_max <= high_4th) and (recent_3_vol_avg > latest['MV20'])
+        # 5. 早盤急拉後見頂回落 (上影線大於實體2倍，且創近5日新高爆量)
+        recent_5_high = df['High'].iloc[-5:].max()
+        pa_flags["pa5_trap"] = (upperShadow > realBody * 2) and (latest['High'] >= recent_5_high) and (
+                    latest['Volume'] > latest['MV5'])
+        # 6. 跌破關鍵均線不收回 (2日確認)
+        prev2 = df.iloc[-3]
+        pa_flags["pa6_ma_break"] = (prev2['Close'] >= prev2['MA20']) and (prev['Close'] < prev['MA20']) and (
+                    latest['Close'] < latest['MA20'])
+
+    # 計算 PA 風險懲罰 (Veto Power)
+    pa_penalty = 0
+    if pa_flags["pa2_gap_down"] or pa_flags["pa6_ma_break"]:
+        pa_penalty = 25  # 極度危險
+    elif pa_flags["pa1_no_limit"] or pa_flags["pa3_engulf"] or pa_flags["pa4_stagnant"] or pa_flags["pa5_trap"]:
+        pa_penalty = 15  # 危險
+
+    # ======= 聖杯起漲點判定 =======
+    is_squeezed, is_vol_surge, is_price_breakout, is_obv_surge, is_holy_grail = False, False, False, False, False
+    if len(df) > 65:
+        min_bbw_recent = df['BBW'].iloc[-6:-1].min()
+        min_bbw_60d = df['BBW'].iloc[-61:-1].min()
+        is_squeezed = bool(min_bbw_recent <= (min_bbw_60d * 1.15))
+        prev_mv20 = df['Volume'].rolling(20).mean().shift(1).iloc[-1]
+        is_vol_surge = bool(latest['Volume'] > (prev_mv20 * 2.5))
+        is_price_breakout = bool((latest['Close'] > latest['BBU']) and (latest['Close'] > latest['Open']))
+        prev_obv_max = df['OBV_Diff'].shift(1).rolling(20).max().iloc[-1]
+        is_obv_surge = bool(df['OBV_Diff'].iloc[-1] > prev_obv_max)
+        is_holy_grail = is_squeezed and is_vol_surge and is_price_breakout and is_obv_surge
+
     a_rank, a_desc, b_rank, b_desc, title, msg = calculate_ab_rankings(
-        latest['Close'], latest['MA20'], ma20_shape, rsi_shape, mfi_shape
+        latest['Close'], latest['MA20'], ma20_shape, rsi_shape, mfi_shape, is_holy_grail, pa_penalty
     )
 
     alpha_score = 0
-    if a_rank == "A+":
+    if a_rank in ["A+", "S+"]:
         alpha_score += 25
     elif a_rank == "A":
         alpha_score += 15
-    if b_rank == "B+":
+    if b_rank in ["B+", "S+"]:
         alpha_score += 25
     elif b_rank == "B":
         alpha_score += 15
 
-    total_score = macro_score + flow_score + alpha_score
+    alpha_score = max(0, alpha_score - pa_penalty)  # 套用 PA 扣分
+    total_score = max(0, macro_score + flow_score + alpha_score)
 
     isChipBearish = f_buy < 0 and t_buy <= 0
     isAboveMA20 = latest['Close'] > latest['MA20']
     isAboveLACA = latest['Close'] >= laca
 
-    upperShadow = latest['High'] - max(latest['Open'], latest['Close'])
-    realBody = abs(latest['Close'] - latest['Open'])
     isHighVolume = latest['Volume'] > (latest['MV5'] * 2 if pd.notna(latest['MV5']) else 1)
     isShootingStar = upperShadow > (realBody * 1.5) and upperShadow > (latest['Close'] * 0.01)
 
@@ -330,7 +392,9 @@ def fetch_data(ticker):
     isBullTrap = (isAboveMA20 and isChipBearish) or (not isAboveMA20 and isAboveLACA and isChipBearish)
 
     scenario_type = "default"
-    if isClimaxExhaustion:
+    if is_holy_grail:
+        scenario_type = "holy_grail"
+    elif isClimaxExhaustion:
         scenario_type = "climax"
     elif isMarginCall:
         scenario_type = "margin_call"
@@ -351,19 +415,26 @@ def fetch_data(ticker):
     else:
         scenario_type = "dead_cat"
 
-    if scenario_type in ["strong_attack", "squeeze"] and total_score < 45:
-        scenario_type = "bull_trap"
+    # ======= [V5] 裸 K 權重降維防呆覆寫 =======
+    if scenario_type in ["strong_attack", "squeeze"] and scenario_type != "holy_grail":
+        if pa_flags["pa2_gap_down"] or pa_flags["pa6_ma_break"]:
+            scenario_type = "dead_cat"  # 極端空頭覆寫
+        elif pa_penalty > 0 or total_score < 45:
+            scenario_type = "bull_trap"  # 誘多覆寫
 
     df.index = df.index.tz_localize(None)
 
     return {
         "df": df, "latest": latest, "prev": prev, "stock_name": stock_name,
-        "laca": laca, "scenario": scenario_type,
+        "laca": laca, "scenario": scenario_type, "pa_flags": pa_flags, "pa_penalty": pa_penalty,
         "a_rank": a_rank, "a_desc": a_desc, "b_rank": b_rank, "b_desc": b_desc, "logic_title": title, "logic_msg": msg,
         "f_buy": f_buy, "t_buy": t_buy, "f_days": f_days, "t_days": t_days, "f_cumsum": f_cumsum, "t_cumsum": t_cumsum,
+        "chip_ok": chip_ok,
         "atm_risk": atm_risk, "macro_msg": macro_msg, "tsm_pct": tsm_pct,
         "macro_score": macro_score, "flow_score": flow_score, "alpha_score": alpha_score, "total_score": total_score,
-        "rsi_shape": rsi_shape, "mfi_shape": mfi_shape, "obv_shape": obv_shape
+        "rsi_shape": rsi_shape, "mfi_shape": mfi_shape, "obv_shape": obv_shape,
+        "hg_flags": {"squeezed": is_squeezed, "vol_surge": is_vol_surge, "breakout": is_price_breakout,
+                     "obv_surge": is_obv_surge}
     }
 
 
@@ -375,15 +446,36 @@ def get_unified_command(data):
     bbu = data['latest']['BBU']
     bbl = data['latest']['BBL']
     laca = data['laca']
+    hg = data['hg_flags']
 
-    if data['atm_risk'] and data['f_buy'] < 0:
-        sys_status = "<span class='text-danger fw-bold'>🔴 總經提款警戒：外資逢高結帳，台股面臨開高走低風險。</span>"
+    radar_html = f"""
+    <div style='font-size:0.95rem; color:#1a252f; background-color:#f8f9fa; padding:12px 18px; border-radius:8px; margin-top:12px; border: 1px dashed #ced4da;'>
+        <i class='fas fa-radar' style='color:#6f42c1;'></i> <b>聖杯型態偵測雷達 (需全數符合)：</b><br>
+        <div style='margin-left: 10px; margin-top: 5px; line-height: 1.6;'>
+            {'<span style="color:#198754; font-weight:bold;">✅</span>' if hg['squeezed'] else '❌'} ① 布林帶寬達近 60 日極限壓縮<br>
+            {'<span style="color:#198754; font-weight:bold;">✅</span>' if hg['vol_surge'] else '❌'} ② 爆發大於 20 日均量 2.5 倍之天量<br>
+            {'<span style="color:#198754; font-weight:bold;">✅</span>' if hg['breakout'] else '❌'} ③ 實體紅 K 強勢貫穿布林上軌<br>
+            {'<span style="color:#198754; font-weight:bold;">✅</span>' if hg['obv_surge'] else '❌'} ④ OBV 資金斜率突破近 20 日最高峰
+        </div>
+    </div>
+    """
+
+    if sc == "holy_grail":
+        sys_status = f"<br><span style='color:#d4af37; font-weight:900; font-size:1.15rem;'><i class='fas fa-crown'></i> 無條件覆寫：觸發最高位階【聖杯型態】！</span>{radar_html}"
+    elif data['atm_risk'] and data['f_buy'] < 0:
+        sys_status = f"<span class='text-danger fw-bold'>🔴 總經提款警戒：外資逢高結帳，台股面臨開高走低風險。</span>{radar_html}"
+    elif data['pa_penalty'] > 0:
+        sys_status = f"<span class='text-danger fw-bold'>🚨 裸 K 否決權觸發：發現主力出貨或誘多之實體 K 線特徵，強制降級劇本！</span>{radar_html}"
     elif data['total_score'] < 45:
-        sys_status = "<span class='text-warning fw-bold' style='color:#fd7e14 !important;'>🟡 權重驗證覆寫：總分偏低，宏觀或籌碼面不支持技術面突破，提防誘多！</span>"
+        sys_status = f"<span class='text-warning fw-bold' style='color:#fd7e14 !important;'>🟡 權重驗證覆寫：總分偏低，宏觀或籌碼面不支持技術面突破，提防誘多！</span>{radar_html}"
     else:
-        sys_status = "<span class='text-success fw-bold'>🟢 資金環境正常，依循 Alpha 模組與籌碼動向獨立判定。</span>"
+        sys_status = f"<span class='text-success fw-bold'>🟢 資金環境正常，依循 Alpha 模組與籌碼動向獨立判定。</span>{radar_html}"
 
-    if sc == "climax":
+    if sc == "holy_grail":
+        title = "🌟 聖杯起漲點：極致壓縮爆發！"
+        color = "#d4af37"
+        msg = f"這就是波段交易者的聖杯！經歷長達一個月的極限壓縮後，今日主力以超越 2.5 倍均量的爆發力貫穿上軌 ({bbu:.2f})！請務必重倉參與，只要未跌破 5日線，此股將展開長波段主升段！"
+    elif sc == "climax":
         title = "🛑 天量竭盡，立刻抽回資金！"
         color = "#dc3545"
         msg = f"天量避雷針已現，主力正在高檔無情倒貨！請立刻抽回所有資金，連盤中均價線 ({vwap:.2f}) 都不要接刀。將資金轉移至其他剛起漲標的，嚴禁留戀！"
@@ -427,88 +519,68 @@ def generate_execution_script(data):
     sc = data['scenario']
     latest = data['latest']
     vVWAP, vBBUpper, vBBLower = f"{latest['TP']:.2f}", f"{latest['BBU']:.2f}", f"{latest['BBL']:.2f}"
-    vMA5, vMA20, vLACA, vPrevClose = f"{latest['MA5']:.2f}", f"{latest['MA20']:.2f}", f"{data['laca']:.2f}", f"{data['prev']['Close']:.2f}"
+    vMA5 = f"{latest['MA5']:.2f}"
 
     headClass, brainlessContent = "", ""
     obs = [""] * 5;
     act = [""] * 5
 
-    weight_warning = ""
-    if data['total_score'] < 45 and (latest['Pct_Change'] > 2 or latest['Close'] > latest['MA20']):
-        weight_warning = f"<span class='badge bg-danger mb-2'>⚖️ 權重驗證覆寫：總分僅 {data['total_score']} 分，宏觀籌碼不支持技術面突破，提防誘多！</span><br>"
-
-    if sc == "climax":
+    if sc == "holy_grail":
+        headClass = "bg-warning text-dark"
+        obs = [f"開盤即出量跳空越過 {vBBUpper}", f"踩穩均價線 <span class='vwap-highlight'>({vVWAP})</span> 上攻",
+               "盤中回測皆是量縮", "高檔量滾量強勢震盪", "大單強勢鎖死或收最高"]
+        act = ["確認突破，市價敲進底倉", f"<strong class='text-danger'>現價不破 {vVWAP} 積極加碼</strong>",
+               f"回測 {vVWAP} 有守果斷重壓", "死抱不放，讓利潤奔跑", f"強勢多頭確立，安心留倉"]
+    elif sc == "climax":
         headClass = "bg-dark"
-        brainlessContent = weight_warning + f"<span style='color:#ff6b6b'>🛑 【天量避雷針】：極端的高檔出貨訊號。</span><br>思考：盤中拉高是創造流動性，尾盤砸回代表力竭，明日極易開低走低。"
         obs = ["試撮大單掛漲停誘多", f"急殺破 <span class='vwap-highlight'>均價線 ({vVWAP})</span>", "反彈不過早盤高點",
                "留下長上影線", "收出避雷針墓碑 K"]
         act = ["防範開盤拉高出貨", f"<strong class='text-danger'>現價 < {vVWAP} 嚴禁追高！</strong>", "逢高全數獲利了結",
                "絕對空手觀望", f"<strong class='text-danger'>明日極易跌破 {vMA5}</strong>"]
     elif sc == "upper_bb":
         headClass = "bg-warning text-dark"
-        brainlessContent = weight_warning + f"<span style='color:#ffc107'>⚠️ 【上軌壓力區】：觸碰布林上軌，缺乏連續性動能。</span><br>思考：在震盪格局中，上軌是出貨點，我要引誘散戶在這裡追高。"
         obs = ["若夜盤不佳，極易遭狙擊", f"衝撞 <span class='num-highlight'>{vBBUpper}</span> 量能不足",
                "反彈無力站回均價線", "陷入箱型震盪", "收盤無法鎖死"]
         act = ["底倉偏向防守", f"<strong class='text-danger'>觸碰 {vBBUpper} 為壓力，嚴禁追高</strong>", "逢高減碼",
                "T+1 勝率低，不加碼", "空手觀望或底倉防守"]
     elif sc == "lower_bb":
         headClass = "bg-primary text-white"
-        brainlessContent = f"<span style='color:#a5d8ff'>🧲 【下軌超賣區】：觸碰布林下軌，負乖離極大。</span><br>思考：賣壓消耗殆盡，散戶恐慌殺低，我正好用低成本建倉。"
         obs = ["試撮重挫，恐慌趕底", f"觸碰 <span class='num-highlight'>{vBBLower}</span> 後站回 {vVWAP}",
                "回測不破早盤低點", "量縮窒息空軍不敢追", "收出下影線誘空完成"]
         act = ["準備左側抄底資金", "確認跌勢放緩", f"<strong class='text-primary'>穩在 {vVWAP} 之上，絕佳買點</strong>",
                "底倉抱緊", "防守線設今日最低點"]
-    elif sc == "squeeze":
+    elif sc == "squeeze" or sc == "strong_attack":
         headClass = "bg-danger"
-        brainlessContent = f"<span style='color:#ff6b6b'>🚀 【軋空點火 / 突破噴出】：帶量突破上軌發動。</span><br>思考：讓空軍買不到股票，只要不跌破上軌或5日線就是死抱。"
-        obs = ["無異常大單撤銷", f"開高穩踩 <span class='vwap-highlight'>{vVWAP}</span>", f"獲利回測，觀察 {vVWAP} 防守",
-               "高檔量縮震盪，消化賣壓", "尾盤大單敲进收高"]
+        obs = ["試撮穩健無異常抽單", f"開高穩踩 <span class='vwap-highlight'>{vVWAP}</span>",
+               f"獲利回測，觀察 {vVWAP} 防守", "高檔量縮震盪，消化賣壓", "尾盤大單敲进收高"]
         act = ["確認攻擊基調", f"<strong class='text-danger'>確認突破！破 {vVWAP} 沒收劇本</strong>",
                f"<strong class='text-danger'>回測 {vVWAP} 有守，加碼 20%！</strong>", "底倉抱緊", f"未破 {vMA5} 安心留倉"]
-    elif sc == "margin_call":
+    elif sc == "margin_call" or sc == "dead_cat":
         headClass = "bg-dark"
-        brainlessContent = f"<span style='color:#dc3545'>🩸 【多殺多雪崩】：維持率破警戒，融資斷頭潮湧現！</span><br>思考：不要阻擋墜落的刀子，等散戶踩踏完畢再收屍。"
-        obs = ["試撮綠油油", "無量崩跌引爆強制平倉", "委買五檔空虛", "散戶絕望，籌碼散落", "收跌停或極長下影線"]
-        act = ["嚴禁開盤摸底接刀", "<strong class='text-success'>絕對空手！指標全數失效</strong>", "看戲讓籌碼踐踏",
-               "繼續觀望", "無天量下影線嚴禁進場"]
+        obs = ["試撮綠油油或弱勢", f"開高瞬間跌破 <span class='vwap-highlight'>{vVWAP}</span>",
+               "無量崩跌或反彈爆量回落", "散戶絕望，往下漂流", "收最低或極長下影線"]
+        act = ["嚴禁開盤摸底接刀", "<strong class='text-success'>絕對空手！開高走低出貨盤</strong>",
+               "<strong class='text-success'>看戲讓籌碼踐踏，絕佳狙擊點</strong>", "反彈皆是逃命波",
+               "無天量下影線嚴禁進場"]
     elif sc == "golden_pit":
         headClass = "bg-info text-dark"
-        brainlessContent = f"<span style='color:#0dcaf0'>💎 【挖坑吃貨】：故意跌破防線製造恐慌，實則暗中吸籌。</span><br>思考：賣壓已枯竭，用最少籌碼砸破線引發停損潮。"
-        obs = ["試撮開低製造恐慌", f"破月線後站回 <span class='vwap-highlight'>{vVWAP}</span>",
-               f"在 LACA ({vLACA}) 附近吸籌", "量縮橫盤讓市場遺忘", "拉回收長下影線"]
+        obs = ["試撮開低製造恐慌", f"破月線後站回 <span class='vwap-highlight'>{vVWAP}</span>", "在 LACA 附近吸籌",
+               "量縮橫盤讓市場遺忘", "拉回收長下影線"]
         act = ["觀察是否為刻意挖坑", f"<strong class='text-primary'>站穩 {vVWAP} 是絕佳左側試單點</strong>",
-               "趁恐慌打底分批買進", "持股耐心續抱", f"破 {vLACA} 停損，否則留倉"]
+               "趁恐慌打底分批買進", "持股耐心續抱", "破 LACA 停損，否則留倉"]
     elif sc == "resting":
         headClass = "bg-secondary text-white"
-        brainlessContent = f"<span style='color:#f8f9fa'>💤 【量縮整理 / 良性換手】：主力休息或壓量回測。</span><br>思考：清洗短線獲利浮額，等待 5日線上靠補量。"
-        obs = ["試撮平淡", f"預估量急縮，貼著 {vVWAP} 震盪", f"緩跌測試 {vMA20} 或 {vLACA}", "上下波動極小",
-               "收量縮小黑或十字線"]
-        act = ["預期無聊盤整，不躁進", "量縮整理，無追價價值", f"回測 {vLACA} 不破可佈局", "嚴禁此時無腦加碼",
+        obs = ["試撮平淡", f"預估量急縮，貼著 {vVWAP} 震盪", "緩跌測試均線或 LACA", "上下波動極小", "收量縮小黑或十字線"]
+        act = ["預期無聊盤整，不躁進", "量縮整理，無追價價值", "支撐不破可佈局", "嚴禁此時無腦加碼",
                f"等待回測 {vMA5} 再動作"]
     elif sc == "bull_trap":
         headClass = "bg-warning text-dark"
-        brainlessContent = weight_warning + f"<span style='color:#ffc107'>⚠️ 【誘多出貨】：股價雖撐，底層資金暗中撤退。</span><br>思考：維持表面強勢，讓散戶接走高檔貨。"
         obs = ["試撮異常強勢掛假單", f"急拉過高後爆量破 <span class='vwap-highlight'>{vVWAP}</span>",
                "股價緩跌破開盤價(A轉)", "護盤防守 LACA 避免崩盤", "收黑K或長上影線"]
         act = ["防範拉高出貨", f"<strong class='text-danger'>破 {vVWAP} 嚴禁追高</strong>",
-               f"反彈不過 {vVWAP} 是逃命波", "多單準備撤退", f"收破 {vMA20} 明日即走"]
-    elif sc == "strong_attack":
-        headClass = "bg-danger"
-        brainlessContent = f"<span style='color:#ff6b6b'>🚀 【發動強攻】：趨勢完美，主力正在出量拉抬。</span><br>思考：吸引散戶追高，並在盤中洗掉當沖客？"
-        obs = ["試撮穩健無異常抽單", f"跳空開高站穩 <span class='vwap-highlight'>{vVWAP}</span>",
-               f"洗盤破開盤價後 V轉站回 {vVWAP}", "維持高檔震盪", "拉抬尾盤收最高"]
-        act = ["確認攻擊基調", f"確認有效攻擊，破 {vVWAP} 沒收劇本",
-               f"<strong class='text-danger'>洗盤量縮測試 {vVWAP} 可試探底倉</strong>", "底倉抱緊，逢洗盤加碼",
-               "強多格局延續，留倉"]
-    else:
-        headClass = "bg-success"
-        brainlessContent = f"<span style='color:#20c997'>☠️ 【死貓反彈 / 全面棄守】：跌破防線的反彈都是逃命波。</span><br>思考：盤中紅 K 都是誘騙散戶接刀用的。"
-        obs = ["試撮弱勢", f"開高瞬間跌破 <span class='vwap-highlight'>{vVWAP}</span>",
-               f"反彈觸碰昨收 {vPrevClose} 爆量回落", "量能萎縮往下漂流", "收最低或長上影線"]
-        act = ["絕對禁止開盤摸底", "<strong class='text-success'>開高走低出貨盤，嚴禁接刀！</strong>",
-               "<strong class='text-success'>確認為死貓反彈，絕佳狙擊點</strong>", "反彈皆是逃命波", "趨勢偏空，絕對空手"]
+               f"反彈不過 {vVWAP} 是逃命波", "多單準備撤退", "跌破生命線明日即走"]
 
-    return headClass, brainlessContent, obs, act
+    return headClass, obs, act
 
 
 def compute_hist_ab_verify(row, prev_row, laca):
@@ -551,18 +623,18 @@ def compute_hist_pattern(row):
 # ==========================================
 # UI 介面繪製
 # ==========================================
-st.title("📈 全方位個股掃描系統 (V4)")
+st.title("📈 全方位個股掃描系統 (V5 裸 K 實戰版)")
 st.markdown(
     "<div class='disclaimer'>本程式僅供個人與朋友間參考交流之用，不涉及任何商業用途，亦不承擔因操作或使用所產生的任何責任。</div>",
     unsafe_allow_html=True)
 
 col1, col2 = st.columns([1, 3])
 with col1:
-    ticker_input = st.text_input("股票代號 (上市/上櫃，如 2330, 3293)", "2330")
-    run_btn = st.button("🎯 啟動矩陣與圖表運算", use_container_width=True)
+    ticker_input = st.text_input("股票代號 (上市/上櫃，如 2330, 00878)", "2330")
+    run_btn = st.button("🎯 啟動矩陣與圖表運算", width="stretch")
 
 if run_btn:
-    with st.spinner('連線國際市場、爬取股票名稱與繪製圖表中...'):
+    with st.spinner('連線國際市場、爬取股票名稱與執行裸K分析...'):
         data = fetch_data(ticker_input)
 
         if not data:
@@ -580,18 +652,16 @@ if run_btn:
                 </div>
                 """, unsafe_allow_html=True)
 
-            # ====== [核心回歸] 操盤手大一統指令 (標題加入股票名稱) ======
             sys_status, verdict_title, coach_msg, verdict_color = get_unified_command(data)
 
             st.markdown(f"""
             <div style='background-color: #fff; border-left: 8px solid {verdict_color}; padding: 25px 30px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 8px 16px rgba(0,0,0,0.06); border: 1px solid #f1f3f5;'>
                 <h3 style='color: #1a252f; font-weight: 900; margin-bottom: 18px; letter-spacing: 1px;'><i class="fas fa-user-tie"></i> 操盤手大一統指令 ({stock_name} {clean_ticker})：<span style='color: {verdict_color};'>{verdict_title}</span></h3>
                 <div style='font-size: 1.1rem; color: #495057; margin-bottom: 12px;'><i class="fas fa-robot"></i> <b>系統判定：</b>{sys_status}</div>
-                <div style='font-size: 1.25rem; font-weight: bold; color: #212529; line-height: 1.6; background-color: rgba(0,0,0,0.02); padding: 15px; border-radius: 8px;'><i class="fas fa-bullseye" style="color: #dc3545;"></i> <b>戰略指導：</b>{coach_msg}</div>
+                <div style='font-size: 1.25rem; font-weight: bold; color: #212529; line-height: 1.6; background-color: rgba(0,0,0,0.02); padding: 15px; border-radius: 8px; margin-top:15px;'><i class="fas fa-bullseye" style="color: #dc3545;"></i> <b>戰略指導：</b>{coach_msg}</div>
             </div>
             """, unsafe_allow_html=True)
 
-            # ====== 動態權重總分展示 ======
             total = data['total_score']
             score_color = "#198754" if total >= 70 else ("#fd7e14" if total >= 45 else "#dc3545")
             st.markdown(f"""
@@ -609,6 +679,80 @@ if run_btn:
             </div>
             """, unsafe_allow_html=True)
 
+            # ====== 第三排：決戰時刻表 (左) + 裸K行為掃描 (右) ======
+            col_t3_left, col_t3_right = st.columns([5, 4])
+
+            with col_t3_left:
+                headClass, obs, act = generate_execution_script(data)
+                st.markdown(f"### ⚔️ 盤中 5 大動態決戰時刻 (Live T+1) - {stock_name}")
+                st.markdown(f"""
+                <table class="table table-bordered exec-table mb-5">
+                    <thead class="{headClass}">
+                        <tr>
+                            <th style="width: 15%">時間點</th><th style="width: 45%">⚔️ 盤面表象與動態觀測</th><th style="width: 40%">🎯 操盤手防呆指令</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td class="fw-bold">08:50 - 09:00<br><span class="text-muted small">競價</span></td><td>{obs[0]}</td><td style="background-color: #f8f9fa">{act[0]}</td></tr>
+                        <tr><td class="fw-bold">09:00 - 09:30<br><span class="text-muted small">開盤</span></td><td>{obs[1]}</td><td style="background-color: #f8f9fa">{act[1]}</td></tr>
+                        <tr><td class="fw-bold">09:45 - 10:15<br><span class="text-muted small">洗盤</span></td><td>{obs[2]}</td><td style="background-color: #f8f9fa">{act[2]}</td></tr>
+                        <tr><td class="fw-bold">11:30 - 12:00<br><span class="text-muted small">真空</span></td><td>{obs[3]}</td><td style="background-color: #f8f9fa">{act[3]}</td></tr>
+                        <tr><td class="fw-bold">13:00 - 13:25<br><span class="text-muted small">尾盤</span></td><td>{obs[4]}</td><td style="background-color: #f8f9fa">{act[4]}</td></tr>
+                    </tbody>
+                </table>
+                """, unsafe_allow_html=True)
+
+            with col_t3_right:
+                pa = data['pa_flags']
+                st.markdown(f"### 🕯️ 裸 K 價格行為 (Price Action) 診斷")
+                pa_html = "<div class='pa-card'><div class='pa-title'>🚨 實戰 K 線行為否決權掃描 (Veto Power)</div>"
+
+                has_pa_alert = False
+                if pa["pa1_no_limit"]:
+                    has_pa_alert = True
+                    pa_html += "<div class='pa-item-active'>⚠️ 【高位震盪出貨】：拉伸 +7% 卻無法鎖死漲停，並留下上影線，主力正在來回倒貨撤退！</div>"
+                else:
+                    pa_html += "<div class='pa-item-inactive'>✅ 未觸發「拉伸不漲停」撤退訊號</div>"
+
+                if pa["pa2_gap_down"]:
+                    has_pa_alert = True
+                    pa_html += "<div class='pa-item-danger'>🩸 【極度危險】：低開 -3% 且放量持續下跌，盤中毫無反彈買盤，拋壓極重，遠離別接刀！</div>"
+                else:
+                    pa_html += "<div class='pa-item-inactive'>✅ 未觸發「低開無反彈」危險訊號</div>"
+
+                if pa["pa3_engulf"]:
+                    has_pa_alert = True
+                    pa_html += "<div class='pa-item-active'>⚠️ 【多空逆轉】：早盤高開，收盤卻跌破昨日收盤 (中翻綠)，空頭力量已完全壓制多頭！</div>"
+                else:
+                    pa_html += "<div class='pa-item-inactive'>✅ 未觸發「高開低走中翻綠」走弱訊號</div>"
+
+                if pa["pa4_stagnant"]:
+                    has_pa_alert = True
+                    pa_html += "<div class='pa-item-active'>⚠️ 【高位放量滯漲】：股價連 3 日高位爆量卻無法突破前高，主力趁機派發籌碼嫌疑極大！</div>"
+                else:
+                    pa_html += "<div class='pa-item-inactive'>✅ 未觸發「高位滯漲」警報</div>"
+
+                if pa["pa5_trap"]:
+                    has_pa_alert = True
+                    pa_html += "<div class='pa-item-active'>⚠️ 【誘多釣魚陷阱】：早盤急拉創高後爆量回落，留下尖銳極長上影線，跟風必套！</div>"
+                else:
+                    pa_html += "<div class='pa-item-inactive'>✅ 未觸發「早盤急拉見頂」誘多陷阱</div>"
+
+                if pa["pa6_ma_break"]:
+                    has_pa_alert = True
+                    pa_html += "<div class='pa-item-danger'>☠️ 【趨勢終結確認】：股價跌破生命線 (20MA) 且兩日內無法收回，下跌趨勢正式開啟，果斷離場！</div>"
+                else:
+                    pa_html += "<div class='pa-item-inactive'>✅ 未觸發「跌破關鍵均線不收回」警報</div>"
+
+                if not has_pa_alert:
+                    pa_html += "<div style='margin-top: 20px; text-align: center; color: #198754; font-weight: bold; font-size: 1.1rem;'><i class='fas fa-shield-alt'></i> 目前無異常裸 K 價格行為，實體動能健康。</div>"
+
+                pa_html += "</div>"
+                st.markdown(pa_html, unsafe_allow_html=True)
+
+            st.divider()
+
+            # ====== 第四排：絕對數值與三大分析模組 ======
             c1, c2, c3 = st.columns(3)
             with c1:
                 st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -639,33 +783,45 @@ if run_btn:
                 st.markdown('</div>', unsafe_allow_html=True)
 
             c4, c5, c6 = st.columns(3)
-            f_act = f"連買 {data['f_days']} 天" if data['f_days'] > 0 else (
-                f"連賣 {abs(data['f_days'])} 天" if data['f_days'] < 0 else "無動靜")
-            t_act = f"連買 {data['t_days']} 天" if data['t_days'] > 0 else (
-                f"連賣 {abs(data['t_days'])} 天" if data['t_days'] < 0 else "無動靜")
-            f_buy, t_buy = data['f_buy'], data['t_buy']
-            if f_buy < 0 and t_buy > 0:
-                health_msg = "🛡️ 內資護盤 (良性換手)：外資提款，投信連續吃貨。"
-            elif f_buy > 0 and t_buy > 0:
-                health_msg = "🔥 土洋齊買 (強勢集中)：籌碼極度集中，推升動能強勁！"
-            elif f_buy < 0 and t_buy < 0:
-                health_msg = "☠️ 土洋齊賣 (失血警戒)：法人共識偏空，上檔壓力沉重。"
-            else:
-                health_msg = "⚖️ 法人分歧 (震盪沉澱)：籌碼無單一方向，短線依賴技術面。"
 
             with c4:
-                st.markdown(f"""
-                <div class="card card-flow">
-                    <h5 style="color: #fd7e14; font-weight: bold;">💰 Flow 法人真金白銀</h5>
-                    <div style="font-size: 0.95rem; line-height: 1.8;">
-                        <b>外資動向:</b> 今日 {f_buy:.0f} 張 | {f_act}<br>
-                        <b>投信動向:</b> 今日 {t_buy:.0f} 張 | {t_act}<br>
+                if not data['chip_ok']:
+                    st.markdown(f"""
+                    <div class="card card-flow">
+                        <h5 style="color: #fd7e14; font-weight: bold;">💰 Flow 法人真金白銀</h5>
+                        <div style="margin-top: 20px; padding: 15px; background-color: #f8d7da; color: #842029; border-radius: 5px; font-size: 0.95rem; font-weight: bold; text-align:center;">
+                            <i class="fas fa-exclamation-triangle"></i> 無法獲取籌碼資料<br>
+                            <span style='font-size:0.85rem; font-weight:normal;'>可能為 ETF 或 API 達到連線限制</span>
+                        </div>
                     </div>
-                    <div style="margin-top: 10px; padding: 8px; background-color: #fff3cd; color: #856404; border-radius: 5px; font-size: 0.85rem; font-weight: bold;">
-                        健康度: {health_msg}
+                    """, unsafe_allow_html=True)
+                else:
+                    f_act = f"連買 {data['f_days']} 天" if data['f_days'] > 0 else (
+                        f"連賣 {abs(data['f_days'])} 天" if data['f_days'] < 0 else "無動靜")
+                    t_act = f"連買 {data['t_days']} 天" if data['t_days'] > 0 else (
+                        f"連賣 {abs(data['t_days'])} 天" if data['t_days'] < 0 else "無動靜")
+                    f_buy, t_buy = data['f_buy'], data['t_buy']
+                    if f_buy < 0 and t_buy > 0:
+                        health_msg = "🛡️ 內資護盤 (良性換手)：外資提款，投信連續吃貨。"
+                    elif f_buy > 0 and t_buy > 0:
+                        health_msg = "🔥 土洋齊買 (強勢集中)：籌碼極度集中，推升動能強勁！"
+                    elif f_buy < 0 and t_buy < 0:
+                        health_msg = "☠️ 土洋齊賣 (失血警戒)：法人共識偏空，上檔壓力沉重。"
+                    else:
+                        health_msg = "⚖️ 法人分歧 (震盪沉澱)：籌碼無單一方向，短線依賴技術面。"
+
+                    st.markdown(f"""
+                    <div class="card card-flow">
+                        <h5 style="color: #fd7e14; font-weight: bold;">💰 Flow 法人真金白銀</h5>
+                        <div style="font-size: 0.95rem; line-height: 1.8;">
+                            <b>外資動向:</b> 今日 {f_buy:.0f} 張 | {f_act}<br>
+                            <b>投信動向:</b> 今日 {t_buy:.0f} 張 | {t_act}<br>
+                        </div>
+                        <div style="margin-top: 10px; padding: 8px; background-color: #fff3cd; color: #856404; border-radius: 5px; font-size: 0.85rem; font-weight: bold;">
+                            健康度: {health_msg}
+                        </div>
                     </div>
-                </div>
-                """, unsafe_allow_html=True)
+                    """, unsafe_allow_html=True)
 
             with c5:
                 st.markdown(f"""
@@ -684,8 +840,8 @@ if run_btn:
                 <div class="card card-logic">
                     <h5 style="color: #6f42c1; font-weight: bold;">💡 邏輯防呆與交叉驗證</h5>
                     <div style="font-size: 0.85rem; line-height: 1.6;">
-                        <b>均線評級:</b> [{data['a_rank']}] {data['a_desc']}<br>
-                        <b>動能評級:</b> [{data['b_rank']}] {data['b_desc']}<br>
+                        <b>均線評級:</b> <span style='color: {"#d4af37" if data["a_rank"] == "S+" else "#212529"}; font-weight:bold;'>[{data['a_rank']}]</span> {data['a_desc']}<br>
+                        <b>動能評級:</b> <span style='color: {"#d4af37" if data["b_rank"] in ["S+", "B-"] else "#212529"}; font-weight:bold;'>[{data['b_rank']}]</span> {data['b_desc']}<br>
                     </div>
                     <div style="margin-top: 8px; padding: 8px; background-color: rgba(111, 66, 193, 0.1); border-left: 3px solid #6f42c1; border-radius: 4px; font-size: 0.85rem;">
                         <b>綜合判定: {data['logic_title']}</b><br>{data['logic_msg']}
@@ -693,31 +849,9 @@ if run_btn:
                 </div>
                 """, unsafe_allow_html=True)
 
-            # ====== 第三排：操盤手劇本 (加入股票名稱) ======
-            headClass, brainlessContent, obs, act = generate_execution_script(data)
-            st.markdown(f"### 🧠 操盤手大腦 (The Market Maker's Mind) - {stock_name}")
-            st.markdown(f"<div class='brainless-box'>{brainlessContent}</div>", unsafe_allow_html=True)
-            st.markdown(f"### ⚔️ 盤中 5 大動態決戰時刻 (Live T+1) - {stock_name}")
-            st.markdown(f"""
-            <table class="table table-bordered exec-table mb-5">
-                <thead class="{headClass}">
-                    <tr>
-                        <th style="width: 15%">時間點</th><th style="width: 45%">⚔️ 盤面表象與動態觀測</th><th style="width: 40%">🎯 操盤手數值防呆指令</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr><td class="fw-bold">08:50 - 09:00<br><span class="text-muted small">競價</span></td><td>{obs[0]}</td><td style="background-color: #f8f9fa">{act[0]}</td></tr>
-                    <tr><td class="fw-bold">09:00 - 09:30<br><span class="text-muted small">開盤</span></td><td>{obs[1]}</td><td style="background-color: #f8f9fa">{act[1]}</td></tr>
-                    <tr><td class="fw-bold">09:45 - 10:15<br><span class="text-muted small">洗盤</span></td><td>{obs[2]}</td><td style="background-color: #f8f9fa">{act[2]}</td></tr>
-                    <tr><td class="fw-bold">11:30 - 12:00<br><span class="text-muted small">真空</span></td><td>{obs[3]}</td><td style="background-color: #f8f9fa">{act[3]}</td></tr>
-                    <tr><td class="fw-bold">13:00 - 13:25<br><span class="text-muted small">尾盤</span></td><td>{obs[4]}</td><td style="background-color: #f8f9fa">{act[4]}</td></tr>
-                </tbody>
-            </table>
-            """, unsafe_allow_html=True)
-
             st.divider()
 
-            # ====== 第四排：繪製 Plotly 雙圖表 ======
+            # ====== 第五排：繪製 Plotly 雙圖表 ======
             st.markdown(f"### 📊 趨勢圖表與動能資金流 - {stock_name}")
 
             df_plot = data['df'].tail(120).copy()
@@ -750,7 +884,7 @@ if run_btn:
                     legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5)
                 )
                 fig1.update_xaxes(tickangle=-45)
-                st.plotly_chart(fig1, use_container_width=True)
+                st.plotly_chart(fig1, width="stretch")
 
             with col_chart2:
                 fig2 = make_subplots(specs=[[{"secondary_y": True}]])
@@ -772,16 +906,14 @@ if run_btn:
                 fig2.update_yaxes(range=[0, 100], secondary_y=False)
                 fig2.update_yaxes(showgrid=False, secondary_y=True)
                 fig2.update_xaxes(tickangle=-45)
-                st.plotly_chart(fig2, use_container_width=True)
+                st.plotly_chart(fig2, width="stretch")
 
-            # ====== 第五排：60日歷史動態回測表 (加入標題與下載按鈕) ======
+            # ====== 第六排：60日歷史動態回測表 ======
             col_t1, col_t2 = st.columns([4, 1])
             with col_t1:
                 st.markdown(f"### 📋 {stock_name} ({clean_ticker}) 近期 60 日交易數據回測")
 
             df_hist = data['df'].tail(61).copy()
-
-            # 初始化 CSV 陣列
             csv_rows = ["日期,收盤,漲跌,漲跌幅(%),成交量(張),MA5,MA20,LACA防線,Pi線,RSI(14),MFI(14),AB驗證,型態"]
             rows_html = []
 
@@ -797,7 +929,6 @@ if run_btn:
                 ab_v = compute_hist_ab_verify(row, prev, data['laca'])
                 pat = compute_hist_pattern(row)
 
-                # 組合 HTML
                 if "黃金坑" in ab_v or "洗盤" in ab_v or "超賣" in ab_v:
                     ab_html = f"<span class='badge-hist' style='color:#d4af37; font-weight:bold;'>{ab_v}</span>"
                 elif "突破" in ab_v or "雙多頭" in ab_v:
@@ -810,7 +941,6 @@ if run_btn:
                 tr_content = f'<tr><td class="fw-bold">{date_str}</td><td class="{c_color} fw-bold">{row["Close"]:.2f}</td><td class="{c_color}">{change_str}</td><td>{vol_str}</td><td>{row["MA5"]:.2f}</td><td>{row["MA20"]:.2f}</td><td style="color:#d63384; font-weight:bold;">{data["laca"]:.2f}</td><td style="color:#6f42c1; font-weight:bold;">{row["MA111"]:.2f}</td><td>{row["RSI"]:.1f}</td><td>{row["MFI"]:.1f}</td><td>{ab_html}</td><td><small class="text-muted">{pat}</small></td></tr>'
                 rows_html.append(tr_content)
 
-                # 組合 CSV 字串 (剔除 HTML 標籤)
                 csv_ab = ab_v.replace('⚠️ ', '').replace('🔥 ', '').replace('🧲 ', '').replace('💎 ', '').replace('📉 ',
                                                                                                                '').replace(
                     '☠️ ', '')
@@ -818,7 +948,6 @@ if run_btn:
                 csv_rows.append(
                     f"{date_str},{row['Close']:.2f},{row['Close'] - prev['Close']:.1f},{row['Pct_Change']:.2f}%,{int(row['Volume'] / 1000)},{row['MA5']:.2f},{row['MA20']:.2f},{data['laca']:.2f},{row['MA111']:.2f},{row['RSI']:.1f},{row['MFI']:.1f},{csv_ab},{csv_pat}")
 
-            # 產生 CSV 檔案編碼 (加入 BOM 以支援 Excel 中文顯示)
             csv_text = "\n".join(csv_rows)
             csv_bytes = ("\uFEFF" + csv_text).encode('utf-8')
 
@@ -826,18 +955,16 @@ if run_btn:
                 st.download_button(
                     label="📥 下載 CSV 數據",
                     data=csv_bytes,
-                    file_name=f"{stock_name}_{clean_ticker}_V4_Analysis.csv",
+                    file_name=f"{stock_name}_{clean_ticker}_V5_Analysis.csv",
                     mime="text/csv",
-                    use_container_width=True
+                    width="stretch"
                 )
 
             hist_html = "".join(rows_html)
-
             table_wrapper = f"""<div style="max-height: 500px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 8px;">
 <table class="table table-hover table-striped mb-0 hist-table">
 <thead><tr><th>日期</th><th>收盤</th><th>漲跌</th><th>量</th><th>MA5</th><th>MA20</th><th style="color: #ff91c4;">LACA</th><th style="color: #b18de6;">Pi線</th><th>RSI(14)</th><th>MFI(14)</th><th>AB驗證</th><th>型態</th></tr></thead>
 <tbody>{hist_html}</tbody>
 </table>
 </div>"""
-
             st.markdown(table_wrapper, unsafe_allow_html=True)
