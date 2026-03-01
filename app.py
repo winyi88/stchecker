@@ -129,7 +129,7 @@ def fetch_macro_and_adr():
         n225_pct, szse_pct = get_pct(n225), get_pct(szse)
 
         atm_risk = sox_pct < -2.0 and (datetime.datetime.now().day >= 23 or datetime.datetime.now().day <= 3)
-        macro_msg = f"<b>🇺🇸 美股:</b> 道瓊 {dji_pct:+.2f}% | S&P {sp500_pct:+.2f}% | 費半 <span style='color:{'#dc3545' if sox_pct < 0 else '#198754'}'>{sox_pct:+.2f}%</span><br><b>🌏 亞洲:</b> 日經 {n225_pct:+.2f}% | 深圳 {szse_pct:+.2f}%"
+        macro_msg = f"<b>🎯US 美股:</b> 道瓊 {dji_pct:+.2f}% | S&P {sp500_pct:+.2f}% | 費半 <span style='color:{'#dc3545' if sox_pct < 0 else '#198754'}'>{sox_pct:+.2f}%</span><br><b>🌏 亞洲:</b> 日經 {n225_pct:+.2f}% | 深圳 {szse_pct:+.2f}%"
 
         macro_score = 10 + (3 if sp500_pct >= 0.5 else (-3 if sp500_pct <= -0.5 else 0)) + \
                       (5 if sox_pct >= 1.0 else (-5 if sox_pct <= -1.0 else 0)) + \
@@ -511,15 +511,15 @@ def compute_hist_pattern(row):
 # ==========================================
 # UI 介面繪製
 # ==========================================
-st.title("🏦 全方位個股掃描系統 V8.4 (視覺與語義終極升級版)")
+st.title("🏦 全方位個股掃描系統 V8.4｜視覺 × 語義升級版")
 st.markdown("<div class='disclaimer'> 本程式僅供個人及親友交流使用，不涉及商業用途。使用者須自行承擔使用過程中之風險，開發者不對任何直接或間接損害、法律責任或爭議負責。</div>",
             unsafe_allow_html=True)
 
 # ====== Row 1: 搜尋列 ======
 col1, col2 = st.columns([1, 3])
 with col1:
-    ticker_input = st.text_input("股票代號 (如 2330)", " ")
-    run_btn = st.button("🚀 啟動機構級運算", width="stretch")
+    ticker_input = st.text_input("股票代號 (如 2330)", "")
+    run_btn = st.button("🚀 啟動深度分析運算", width="stretch")
 
 if run_btn:
     with st.spinner('連線五大指數、繪製動能儀表板與執行 3D 機構矩陣...'):
@@ -1039,4 +1039,5 @@ if run_btn:
 </div>
 """
             st.markdown(table_wrapper, unsafe_allow_html=True)
+
 
