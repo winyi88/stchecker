@@ -6,6 +6,9 @@ import requests
 import datetime
 import warnings
 import re
+import io
+import logging
+from contextlib import redirect_stdout, redirect_stderr
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
@@ -14,7 +17,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 # ==========================================
 # 頁面配置與自訂 CSS
 # ==========================================
-st.set_page_config(page_title="全方位個股掃描系統 V8.4", layout="wide", page_icon="🏦")
+st.set_page_config(page_title="全方位個股掃描系統 V8.6", layout="wide", page_icon="🏦")
 
 st.markdown("""
 <style>
@@ -61,9 +64,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ==========================================
-# 核心邏輯模組
-# ==========================================
 @st.cache_data(ttl=86400)
 def get_stock_name(ticker):
     clean_ticker = ticker.replace('.TW', '').replace('.TWO', '')
@@ -110,35 +110,61 @@ def get_trend_shape(series):
 
 @st.cache_data(ttl=300)
 def fetch_macro_and_adr():
-    try:
-        dji = yf.download("^DJI", period="5d", progress=False, auto_adjust=True)
-        sp500 = yf.download("^GSPC", period="5d", progress=False, auto_adjust=True)
-        sox = yf.download("^SOX", period="5d", progress=False, auto_adjust=True)
-        n225 = yf.download("^N225", period="5d", progress=False, auto_adjust=True)
-        szse = yf.download("399001.SZ", period="5d", progress=False, auto_adjust=True)
+    # 靜音處理 Yahoo Finance 下載錯誤
+    f = io.StringIO()
+    with redirect_stdout(f), redirect_stderr(f):
+        try:
+            dji = yf.download("^DJI", period="5d", progress=False, auto_adjust=True)
+            sp500 = yf.download("^GSPC", period="5d", progress=False, auto_adjust=True)
+            sox = yf.download("^SOX", period="5d", progress=False, auto_adjust=True)
+            n225 = yf.download("^N225", period="5d", progress=False, auto_adjust=True)
+            szse = yf.download("399001.SZ", period="5d", progress=False, auto_adjust=True)
+            ewt = yf.download("EWT", period="5d", progress=False, auto_adjust=True)
+            usdtwd = yf.download("TWD=X", period="5d", progress=False, auto_adjust=True)
 
-        def get_pct(df):
-            try:
-                close_vals = df['Close'].squeeze()
-                if isinstance(close_vals, pd.DataFrame): close_vals = close_vals.iloc[:, 0]
-                return float((close_vals.iloc[-1] - close_vals.iloc[-2]) / close_vals.iloc[-2] * 100)
-            except:
-                return 0.0
+            def get_pct(df):
+                try:
+                    close_vals = df['Close'].squeeze()
+                    if isinstance(close_vals, pd.DataFrame): close_vals = close_vals.iloc[:, 0]
+                    return float((close_vals.iloc[-1] - close_vals.iloc[-2]) / close_vals.iloc[-2] * 100)
+                except:
+                    return 0.0
 
-        dji_pct, sp500_pct, sox_pct = get_pct(dji), get_pct(sp500), get_pct(sox)
-        n225_pct, szse_pct = get_pct(n225), get_pct(szse)
+            dji_pct, sp500_pct, sox_pct = get_pct(dji), get_pct(sp500), get_pct(sox)
+            n225_pct, szse_pct = get_pct(n225), get_pct(szse)
+            ewt_pct, usdtwd_pct = get_pct(ewt), get_pct(usdtwd)
+            expected_twii_pct = ewt_pct + usdtwd_pct
 
-        atm_risk = sox_pct < -2.0 and (datetime.datetime.now().day >= 23 or datetime.datetime.now().day <= 3)
-        macro_msg = f"<b>🎯 美股:</b> 道瓊 {dji_pct:+.2f}% | S&P {sp500_pct:+.2f}% | 費半 <span style='color:{'#dc3545' if sox_pct < 0 else '#198754'}'>{sox_pct:+.2f}%</span><br><b>🌏 亞洲:</b> 日經 {n225_pct:+.2f}% | 深圳 {szse_pct:+.2f}%"
+            atm_risk = (sox_pct < -2.0 or expected_twii_pct < -1.5) and (
+                    datetime.datetime.now().day >= 23 or datetime.datetime.now().day <= 3)
+            exp_color = "#dc3545" if expected_twii_pct < 0 else "#198754"
+            ewt_color = "#dc3545" if ewt_pct < 0 else "#198754"
+            usd_color = "#dc3545" if usdtwd_pct < 0 else "#198754"
 
-        macro_score = 10 + (3 if sp500_pct >= 0.5 else (-3 if sp500_pct <= -0.5 else 0)) + \
-                      (5 if sox_pct >= 1.0 else (-5 if sox_pct <= -1.0 else 0)) + \
-                      (1 if n225_pct >= 0.5 else (-1 if n225_pct <= -0.5 else 0)) + \
-                      (1 if szse_pct >= 0.5 else (-1 if szse_pct <= -0.5 else 0))
-        if atm_risk: macro_score -= 10
-        return atm_risk, macro_msg, max(0, min(20, macro_score))
-    except:
-        return False, "國際連動暫無資料", 10
+            # 依據要求更改為蟲蟲 Icon
+            macro_msg = f"""
+<div style="font-size: 0.9rem; line-height: 1.6; margin-bottom: 10px;">
+<b>🐛 美股:</b> 道瓊 {dji_pct:+.2f}% | S&P {sp500_pct:+.2f}% | 費半 <span style="color:{'#dc3545' if sox_pct < 0 else '#198754'}">{sox_pct:+.2f}%</span><br>
+<b>🌏 亞洲:</b> 日經 {n225_pct:+.2f}% | 深圳 {szse_pct:+.2f}%
+</div>
+<div style="padding: 12px; background-color: rgba(13, 110, 253, 0.05); border-left: 4px solid #0d6efd; border-radius: 6px;">
+<div style="font-size: 0.9rem; font-weight: bold; color: #084298; margin-bottom: 4px;"><i class="fas fa-calculator"></i> 台股大盤開盤預測模型</div>
+<div style="font-size: 1.3rem; font-weight: 900; color: {exp_color}; margin-bottom: 4px;">預測大盤 ≈ {expected_twii_pct:+.2f}%</div>
+<div style="font-size: 0.8rem; color: #495057;">
+<b>推演公式</b>：EWT 夜盤 (<span style="color:{ewt_color}">{ewt_pct:+.2f}%</span>) + USD/TWD 匯率 (<span style="color:{usd_color}">{usdtwd_pct:+.2f}%</span>)
+</div>
+<div style="font-size: 0.75rem; color: #adb5bd; margin-top: 4px;">
+(註：外資以美元定價 EWT，換算台幣需加上匯率波動以得真實台股預期)
+</div>
+</div>
+"""
+            macro_score = 10 + (3 if sp500_pct >= 0.5 else (-3 if sp500_pct <= -0.5 else 0)) + \
+                          (5 if sox_pct >= 1.0 else (-5 if sox_pct <= -1.0 else 0)) + \
+                          (2 if expected_twii_pct >= 0.5 else (-2 if expected_twii_pct <= -0.5 else 0))
+            if atm_risk: macro_score -= 10
+            return atm_risk, macro_msg, max(0, min(20, macro_score))
+        except Exception as e:
+            return False, "國際連動暫無資料", 10
 
 
 @st.cache_data(ttl=60)
@@ -165,7 +191,6 @@ def fetch_chip_data(stock_id):
             5 if f_days >= 2 else (-5 if f_days <= -2 else 0)) + \
                      (5 if t_buy > 0 else (-5 if t_buy < 0 else 0)) + (
                          5 if t_days >= 2 else (-5 if t_days <= -2 else 0))
-
         return f_buy, t_buy, f_days, t_days, max(0, min(30, flow_score)), True
     except:
         return 0, 0, 0, 0, 15, False
@@ -173,18 +198,28 @@ def fetch_chip_data(stock_id):
 
 @st.cache_data(ttl=300)
 def fetch_data(ticker):
-    query_ticker = f"{ticker}.TW" if not ticker.endswith(('.TW', '.TWO')) else ticker
-    tk_obj = yf.Ticker(query_ticker)
-    df = tk_obj.history(period="1y", auto_adjust=True)
-    if df.empty and not ticker.endswith(('.TW', '.TWO')):
-        query_ticker = f"{ticker}.TWO"
+    # 【解決 404 Console Error】：使用 contextlib 把 yfinance 輸出的 Error 靜音攔截
+    yf_logger = logging.getLogger('yfinance')
+    original_level = yf_logger.level
+    yf_logger.setLevel(logging.CRITICAL)
+
+    f = io.StringIO()
+    with redirect_stdout(f), redirect_stderr(f):
+        query_ticker = f"{ticker}.TW" if not ticker.endswith(('.TW', '.TWO')) else ticker
         tk_obj = yf.Ticker(query_ticker)
         df = tk_obj.history(period="1y", auto_adjust=True)
+        if df.empty and not ticker.endswith(('.TW', '.TWO')):
+            query_ticker = f"{ticker}.TWO"
+            tk_obj = yf.Ticker(query_ticker)
+            df = tk_obj.history(period="1y", auto_adjust=True)
+
+        twii = yf.download("^TWII", period="1y", progress=False, auto_adjust=True)
+
+    yf_logger.setLevel(original_level)  # 恢復設定
+
     if df.empty: return None
     stock_name = get_stock_name(ticker)
     if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
-
-    twii = yf.download("^TWII", period="1y", progress=False, auto_adjust=True)
     if isinstance(twii.columns, pd.MultiIndex): twii.columns = twii.columns.get_level_values(0)
 
     roe_val = None
@@ -217,19 +252,16 @@ def fetch_data(ticker):
     neg_flow = raw_mf.where(df['TP'] < df['TP'].shift(1), 0).rolling(14).sum()
     df['MFI'] = 100 - (100 / (1 + (pos_flow / neg_flow).replace(0, 1e-10)))
 
-    # VPVR
     recent_120 = df.tail(120)
     hist, bin_edges = np.histogram(recent_120['Close'], bins=20, weights=recent_120['Volume'])
     max_bin_idx = np.argmax(hist)
     poc_price = (bin_edges[max_bin_idx] + bin_edges[max_bin_idx + 1]) / 2
 
-    # ATR
     df['TR'] = np.maximum((df['High'] - df['Low']),
                           np.maximum(abs(df['High'] - df['Close'].shift(1)), abs(df['Low'] - df['Close'].shift(1))))
     df['ATR'] = df['TR'].rolling(14).mean()
     df['ATR_Stop'] = df['High'].rolling(10).max() - (2.5 * df['ATR'])
 
-    # RS 相對大盤
     stock_60d_ret = (df['Close'].iloc[-1] - df['Close'].iloc[-60]) / df['Close'].iloc[-60] * 100 if len(df) >= 60 else 0
     twii_60d_ret = (twii['Close'].iloc[-1] - twii['Close'].iloc[-60]) / twii['Close'].iloc[
         -60] * 100 if not twii.empty and len(twii) >= 60 else 0
@@ -245,7 +277,6 @@ def fetch_data(ticker):
     mfi_shape = get_trend_shape(df['MFI'])
     obv_shape = get_trend_shape(df['OBV'])
 
-    # N 字預測
     n_shape_data = {'is_valid': False, 'first_bottom': 0, 'first_high': 0, 'second_bottom': 0, 'fib_1x': 0,
                     'fib_1618': 0}
     if len(df) >= 60:
@@ -306,7 +337,11 @@ def fetch_data(ticker):
     pa_bonus = 20 if (pa_flags["pa9_bull_pinbar"] or pa_flags["pa10_bull_engulfing"]) else (
         10 if pa_flags["pa7_three_soldiers"] else 0)
 
-    is_squeezed, is_vol_surge, is_price_breakout, is_obv_surge, is_holy_grail = False, False, False, False, False
+    is_squeezed = False
+    is_vol_surge = False
+    is_price_breakout = False
+    is_obv_surge = False
+    is_holy_grail = False
     if len(df) > 65:
         is_squeezed = bool(df['BBW'].iloc[-6:-1].min() <= (df['BBW'].iloc[-61:-1].min() * 1.15))
         is_vol_surge = bool(latest['Volume'] > (df['MV20'].shift(1).iloc[-1] * 2.5))
@@ -400,8 +435,8 @@ def get_unified_command(data, macro_html):
         radar_result = "<span style='color:#6c757d; font-weight:900;'>型態不符 ❌</span>"
 
     radar_macro_html = f"""
-<div style="display: flex; gap: 20px; margin-top: 20px;">
-<div style="flex: 1; background-color: #fdfdfe; padding: 15px 20px; border-radius: 8px; border: 1px dashed #ced4da;">
+<div style="display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px; align-items: stretch;">
+<div style="flex: 1; min-width: 350px; background-color: #fdfdfe; padding: 15px 20px; border-radius: 8px; border: 1px dashed #ced4da; display: flex; flex-direction: column;">
 <div style="display: flex; align-items: center; border-bottom: 1px solid #dee2e6; padding-bottom: 8px; margin-bottom: 10px;">
 <div style="flex-grow: 1;"><i class="fas fa-radar" style="color:#6f42c1;"></i> <b style="font-size: 1.05rem;">聖杯型態偵測雷達</b></div>
 <div>{radar_result}</div>
@@ -413,7 +448,7 @@ def get_unified_command(data, macro_html):
 {'<span style="color:#198754; font-weight:bold;">✅</span>' if hg['obv_surge'] else '<span style="color:#dc3545; font-weight:bold;">❌</span>'} ④ OBV 資金斜率突破近 20 日最高峰
 </div>
 </div>
-<div style="flex: 1; background-color: #f0f8ff; padding: 15px 20px; border-radius: 8px; border: 1px dashed #b6d4fe;">
+<div style="flex: 1; min-width: 350px; background-color: #f0f8ff; padding: 15px 20px; border-radius: 8px; border: 1px dashed #b6d4fe; display: flex; flex-direction: column;">
 <div style="border-bottom: 1px solid #dee2e6; padding-bottom: 8px; margin-bottom: 10px;">
 <i class="fas fa-globe-asia" style="color:#0dcaf0;"></i> <b style="font-size: 1.05rem; color:#1a252f;">Macro 亞洲共振連動</b>
 </div>
@@ -435,7 +470,7 @@ def get_unified_command(data, macro_html):
             msg = f"【跨模組警告】本檔觸發聖杯，但其 RS 落後大盤 {abs(rs):.1f}%。這代表它並非市場主力領頭羊，而是『資金輪動補漲』。爆發力可能較弱，建議縮小倉位，採取打短平快策略，嚴防一日行情！"
     elif data['atm_risk'] and data['f_buy'] < 0:
         sys_status = "<span class='text-danger fw-bold'>🔴 總經提款警戒：外資逢高結帳，台股面臨開高走低風險。</span>"
-        title, color, msg = "🚨 外資提款，嚴格觀望", "#dc3545", "國際股市大跌且外資倒貨，今日極易開高走低，嚴禁進場！"
+        title, color, msg = "🚨 外資提款，嚴格觀望", "#dc3545", "國際股市動盪且外資倒貨，今日極易開高走低，嚴禁進場！"
     elif data['pa_penalty'] > 0:
         sys_status = "<span class='text-danger fw-bold'>🚨 裸 K 否決權觸發：發現主力出貨或誘多特徵，強制降級劇本！</span>"
         title, color, msg = "☠️ 裸K動能轉弱，準備撤退", "#dc3545", "實體 K 線出現危險特徵，請立刻減碼，跌破 ATR 停損即刻清倉。"
@@ -459,7 +494,8 @@ def get_unified_command(data, macro_html):
 def generate_execution_script(data):
     sc = data['scenario']
     latest = data['latest']
-    vVWAP, vBBUpper, vBBLower = f"{latest['TP']:.2f}", f"{latest['BBU']:.2f}", f"{latest['BBL']:.2f}"
+    vVWAP = f"{latest['TP']:.2f}"
+    vBBUpper = f"{latest['BBU']:.2f}"
 
     if sc in ["holy_grail", "strong_attack"]:
         obs = [f"開盤即出量跳空越過 {vBBUpper}", f"踩穩均價線 ({vVWAP}) 上攻", "盤中回測皆是量縮", "高檔量滾量強勢震盪",
@@ -511,17 +547,18 @@ def compute_hist_pattern(row):
 # ==========================================
 # UI 介面繪製
 # ==========================================
-st.title("🏦 全方位個股掃描系統 V8.4｜視覺 × 語義升級版")
-st.markdown("<div class='disclaimer'>本程式僅供個人及親友交流使用，不涉及商業用途。使用者須自行承擔使用過程中之風險，開發者不對任何直接或間接損害、法律責任或爭議負責。</div>",
-            unsafe_allow_html=True)
+st.title("🏦 全方位個股掃描系統 V8.6 (QuantSight)")
+st.markdown(
+    "<div class='disclaimer'>本程式僅供個人及親友交流使用，不涉及商業用途。使用者須自行承擔使用過程中之風險，開發者不對任何直接或間接損害、法律責任或爭議負責。</div>",
+    unsafe_allow_html=True)
 
 # ====== Row 1: 搜尋列 ======
 col1, col2 = st.columns([1, 3])
 with col1:
-    ticker_input = st.text_input("股票代號 (如 2330)", "2330")
-    run_btn = st.button("🚀 啟動深度分析運算", width="stretch")
+    ticker_input = st.text_input("股票代號 (如 2330)", "")  # 預設改為空值
+    run_btn = st.button("🚀 啟動EchoScan運算", width="stretch")
 
-if run_btn:
+if run_btn and ticker_input:  # 確保有輸入才執行
     with st.spinner('連線五大指數、繪製動能儀表板與執行 3D 機構矩陣...'):
         data = fetch_data(ticker_input)
 
@@ -683,21 +720,19 @@ if run_btn:
 """, unsafe_allow_html=True)
 
             with ce3:
-                # 【優化 1：ATR 視覺化與定義說明】
                 atr_stop = data['atr_stop']
                 c_price = latest['Close']
                 atr_dist_pct = (c_price - atr_stop) / c_price * 100
 
-                # 計算長條圖寬度 (0% ~ 10% 為滿版)
                 atr_bar_w = min(max(0, atr_dist_pct) / 10.0 * 100, 100)
                 if atr_dist_pct > 5:
-                    atr_color = "#198754"  # 安全
+                    atr_color = "#198754"
                     atr_msg = "🟢 距離防線尚遠，安全抱單"
                 elif atr_dist_pct > 0:
-                    atr_color = "#fd7e14"  # 警戒
+                    atr_color = "#fd7e14"
                     atr_msg = "🟡 靠近停損防線，高度警戒"
                 else:
-                    atr_color = "#dc3545"  # 跌破
+                    atr_color = "#dc3545"
                     atr_bar_w = 0
                     atr_msg = "🔴 已跌破防線，建議立刻離場"
 
@@ -714,12 +749,10 @@ if run_btn:
 <div style="font-size: 1.3rem; font-weight: 900; color:{atr_color};">{'+' if atr_dist_pct > 0 else ''}{atr_dist_pct:.1f}%</div>
 </div>
 </div>
-
 <div style="width: 100%; height: 6px; background-color: #e9ecef; border-radius: 3px; margin-top: 5px; position: relative;">
 <div style="position: absolute; right: 0; width: {atr_bar_w}%; height: 100%; background-color: {atr_color}; border-radius: 3px;"></div>
 </div>
 <div style="font-size: 0.85rem; color: {atr_color}; text-align: right; margin-top: 4px; font-weight:bold;">{atr_msg}</div>
-
 <div class="engine-desc" style="margin-top:10px;">
 <span>【定義】</span>：近10日最高價 - (2.5 × ATR波動率)。<br>
 <span>【責任範圍】</span>：負責<b>『讓利潤狂奔』</b>。自動給予合理洗盤空間，不會輕易被甩下車。
@@ -769,7 +802,6 @@ if run_btn:
 """, unsafe_allow_html=True)
 
             with c5:
-                # 【優化 2：RSI / MFI 趨勢方向標示與顏色】
                 rsi_val = latest['RSI']
                 mfi_val = latest['MFI']
                 obv_shape = data['obv_shape']
@@ -778,9 +810,9 @@ if run_btn:
 
 
                 def get_trend_color(shape_str):
-                    if "上揚" in shape_str or "向上" in shape_str: return "#198754"  # 綠色
-                    if "向下" in shape_str or "下彎" in shape_str: return "#dc3545"  # 紅色
-                    return "#6c757d"  # 灰色
+                    if "上揚" in shape_str or "向上" in shape_str: return "#198754"
+                    if "向下" in shape_str or "下彎" in shape_str: return "#dc3545"
+                    return "#6c757d"
 
 
                 rsi_color = get_trend_color(rsi_shape)
@@ -884,7 +916,7 @@ if run_btn:
 
                 pa_html = f"""
 <div class='pro-card card-pa'>
-<div class='pro-title'>🕯️ 裸 K 價格行為 (V8.4 語義學診斷)</div>
+<div class='pro-title'>🕯️ 裸 K 價格行為 (V8.6 語義學診斷)</div>
 <div style="margin-bottom: 25px; padding: 15px; background-color: #fdfdfe; border-radius: 8px; border: 1px solid #dee2e6; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
 <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-weight: 800; font-size: 0.95rem;">
 <span style="color: #198754;"><i class="fas fa-arrow-up"></i> 多方攻擊力道 ({bull_power})</span>
@@ -1024,7 +1056,7 @@ if run_btn:
 
             with col_t2:
                 st.download_button(label="📥 下載 CSV 數據", data=csv_bytes,
-                                   file_name=f"{stock_name}_{clean_ticker}_V8.4_Analysis.csv", mime="text/csv",
+                                   file_name=f"{stock_name}_{clean_ticker}_V8.6_Analysis.csv", mime="text/csv",
                                    width="stretch")
 
             hist_html = "".join(rows_html)
