@@ -512,13 +512,13 @@ def compute_hist_pattern(row):
 # UI 介面繪製
 # ==========================================
 st.title("🏦 全方位個股掃描系統 V8.4 (視覺與語義終極升級版)")
-st.markdown("<div class='disclaimer'>深度強化 ATR 停損緩衝區可視化，並於動能儀表板加入 RSI/MFI 的紅綠燈趨勢診斷。</div>",
+st.markdown("<div class='disclaimer'> 本程式僅供個人及親友交流使用，不涉及商業用途。使用者須自行承擔使用過程中之風險，開發者不對任何直接或間接損害、法律責任或爭議負責。</div>",
             unsafe_allow_html=True)
 
 # ====== Row 1: 搜尋列 ======
 col1, col2 = st.columns([1, 3])
 with col1:
-    ticker_input = st.text_input("股票代號 (如 2330)", "4938")
+    ticker_input = st.text_input("股票代號 (如 2330)", " ")
     run_btn = st.button("🚀 啟動機構級運算", width="stretch")
 
 if run_btn:
@@ -1039,3 +1039,4 @@ if run_btn:
 </div>
 """
             st.markdown(table_wrapper, unsafe_allow_html=True)
+
