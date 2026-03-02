@@ -13,23 +13,52 @@ import plotly.graph_objects as go
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-
 # ==========================================
-# 終極防破版 HTML 渲染函數 (V8.9 物理壓縮版)
+# 終極防破版 HTML 渲染函數
 # ==========================================
 def render_html(html_str):
-    """
-    將所有換行 (\n)、Tab (\t) 與連續空白，強制壓縮成單一空白。
-    讓 HTML 變成純粹的一行，徹底消滅 Markdown 誤判為 Code Block 的可能性！
-    """
     cleaned_html = re.sub(r'\s+', ' ', html_str).strip()
     st.markdown(cleaned_html, unsafe_allow_html=True)
 
+# ==========================================
+# 雙重備援 ROE 獲取引擎 (V8.10 核心修復)
+# ==========================================
+def get_robust_roe(ticker, tk_obj):
+    """
+    解決 Streamlit Cloud IP 被 Yahoo API 阻擋的問題。
+    Method 1: yfinance 原生獲取 (本機端極快)。
+    Method 2: 若被擋，啟動物理爬蟲直接拆解 Yahoo 台灣 HTML。
+    """
+    # Method 1: yfinance 原生
+    try:
+        roe = tk_obj.info.get('returnOnEquity', None)
+        if roe is not None:
+            return roe * 100
+    except:
+        pass
+    
+    # Method 2: Yahoo 台灣 HTML 暴力備援 (免疫 Cloudflare API 封鎖)
+    clean_ticker = ticker.replace('.TW', '').replace('.TWO', '')
+    try:
+        url = f"https://tw.stock.yahoo.com/quote/{clean_ticker}/profile"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        res = requests.get(url, headers=headers, timeout=5)
+        if res.status_code == 200:
+            # 尋找 "股東權益報酬率" 後面的第一個百分比數字
+            match = re.search(r'股東權益報酬率.*?([0-9\.\-]+)%', res.text, re.IGNORECASE | re.DOTALL)
+            if match:
+                return float(match.group(1))
+    except:
+        pass
+        
+    return None
 
 # ==========================================
 # 頁面配置與自訂 CSS
 # ==========================================
-st.set_page_config(page_title="全方位個股掃描系統 V8.9", layout="wide", page_icon="🏦")
+st.set_page_config(page_title="全方位個股掃描系統 V8.10", layout="wide", page_icon="🏦")
 
 render_html("""
 <style>
@@ -69,7 +98,6 @@ render_html("""
 </style>
 """)
 
-
 @st.cache_data(ttl=86400)
 def get_stock_name(ticker):
     clean_ticker = ticker.replace('.TW', '').replace('.TWO', '')
@@ -84,7 +112,6 @@ def get_stock_name(ticker):
         pass
     return clean_ticker
 
-
 def get_consecutive_trend(series):
     if len(series) < 2: return 0, 0
     latest_sign = np.sign(series.iloc[-1])
@@ -98,21 +125,14 @@ def get_consecutive_trend(series):
             break
     return count * latest_sign, cumsum
 
-
 def get_trend_shape(series):
     if len(series) < 3: return "無資料"
     v0, v1, v2 = series.iloc[-1], series.iloc[-2], series.iloc[-3]
-    if v0 > v1 and v1 > v2:
-        return "持續上揚 ↗"
-    elif v0 < v1 and v1 < v2:
-        return "持續向下 ↘"
-    elif v0 > v1 and v1 <= v2:
-        return "向上拐彎轉折 ⤴"
-    elif v0 < v1 and v1 >= v2:
-        return "向下拐彎轉折 ⤵"
-    else:
-        return "震盪平移 →"
-
+    if v0 > v1 and v1 > v2: return "持續上揚 ↗"
+    elif v0 < v1 and v1 < v2: return "持續向下 ↘"
+    elif v0 > v1 and v1 <= v2: return "向上拐彎轉折 ⤴"
+    elif v0 < v1 and v1 >= v2: return "向下拐彎轉折 ⤵"
+    else: return "震盪平移 →"
 
 @st.cache_data(ttl=300)
 def fetch_macro_and_adr():
@@ -141,7 +161,7 @@ def fetch_macro_and_adr():
             expected_twii_pct = ewt_pct + usdtwd_pct
 
             atm_risk = (sox_pct < -2.0 or expected_twii_pct < -1.5) and (
-                    datetime.datetime.now().day >= 23 or datetime.datetime.now().day <= 3)
+                        datetime.datetime.now().day >= 23 or datetime.datetime.now().day <= 3)
             exp_color = "#dc3545" if expected_twii_pct < 0 else "#198754"
             ewt_color = "#dc3545" if ewt_pct < 0 else "#198754"
             usd_color = "#dc3545" if usdtwd_pct < 0 else "#198754"
@@ -170,14 +190,12 @@ def fetch_macro_and_adr():
         except Exception as e:
             return False, "國際連動暫無資料", 10
 
-
 @st.cache_data(ttl=60)
 def fetch_chip_data(stock_id):
     url = "https://api.finmindtrade.com/api/v4/data"
     end_date = datetime.datetime.now().strftime("%Y-%m-%d")
     start_date = (datetime.datetime.now() - datetime.timedelta(days=25)).strftime("%Y-%m-%d")
-    params = {"dataset": "TaiwanStockInstitutionalInvestorsBuySell", "data_id": str(stock_id), "start_date": start_date,
-              "end_date": end_date}
+    params = {"dataset": "TaiwanStockInstitutionalInvestorsBuySell", "data_id": str(stock_id), "start_date": start_date, "end_date": end_date}
     try:
         res = requests.get(url, params=params, timeout=5).json()
         if not res.get("data"): return 0, 0, 0, 0, 15, False
@@ -189,33 +207,37 @@ def fetch_chip_data(stock_id):
         f_buy, t_buy = f_series.iloc[-1] if not f_series.empty else 0, t_series.iloc[-1] if not t_series.empty else 0
         f_days, _ = get_consecutive_trend(f_series)
         t_days, _ = get_consecutive_trend(t_series)
-        flow_score = 15 + (5 if f_buy > 0 else (-5 if f_buy < 0 else 0)) + (
-            5 if f_days >= 2 else (-5 if f_days <= -2 else 0)) + \
-                     (5 if t_buy > 0 else (-5 if t_buy < 0 else 0)) + (
-                         5 if t_days >= 2 else (-5 if t_days <= -2 else 0))
+        flow_score = 15 + (5 if f_buy > 0 else (-5 if f_buy < 0 else 0)) + (5 if f_days >= 2 else (-5 if f_days <= -2 else 0)) + \
+                     (5 if t_buy > 0 else (-5 if t_buy < 0 else 0)) + (5 if t_days >= 2 else (-5 if t_days <= -2 else 0))
         return f_buy, t_buy, f_days, t_days, max(0, min(30, flow_score)), True
     except:
         return 0, 0, 0, 0, 15, False
-
 
 @st.cache_data(ttl=300)
 def fetch_data(ticker):
     yf_logger = logging.getLogger('yfinance')
     original_level = yf_logger.level
     yf_logger.setLevel(logging.CRITICAL)
-
+    
     f = io.StringIO()
     with redirect_stdout(f), redirect_stderr(f):
         query_ticker = f"{ticker}.TW" if not ticker.endswith(('.TW', '.TWO')) else ticker
-        tk_obj = yf.Ticker(query_ticker)
+        
+        # 【V8.10 新增】強制注入真實瀏覽器 Header Session 降低雲端被擋機率
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        })
+        tk_obj = yf.Ticker(query_ticker, session=session)
         df = tk_obj.history(period="1y", auto_adjust=True)
+        
         if df.empty and not ticker.endswith(('.TW', '.TWO')):
             query_ticker = f"{ticker}.TWO"
-            tk_obj = yf.Ticker(query_ticker)
+            tk_obj = yf.Ticker(query_ticker, session=session)
             df = tk_obj.history(period="1y", auto_adjust=True)
-
+            
         twii = yf.download("^TWII", period="1y", progress=False, auto_adjust=True)
-
+        
     yf_logger.setLevel(original_level)
 
     if df.empty: return None
@@ -223,18 +245,14 @@ def fetch_data(ticker):
     if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
     if isinstance(twii.columns, pd.MultiIndex): twii.columns = twii.columns.get_level_values(0)
 
-    roe_val = None
-    try:
-        roe_raw = tk_obj.info.get('returnOnEquity', None)
-        if roe_raw: roe_val = roe_raw * 100
-    except:
-        pass
+    # 【V8.10 新增】調用雙重備援 ROE 引擎
+    roe_val = get_robust_roe(ticker, tk_obj)
 
     df['MA5'] = df['Close'].rolling(5).mean()
     df['MA10'] = df['Close'].rolling(10).mean()
     df['MA20'] = df['Close'].rolling(20).mean()
     df['MA60'] = df['Close'].rolling(60).mean()
-
+    
     df['MV5'] = df['Volume'].rolling(5).mean()
     df['MV20'] = df['Volume'].rolling(20).mean()
     df['TP'] = (df['High'] + df['Low'] + df['Close']) / 3
@@ -266,8 +284,7 @@ def fetch_data(ticker):
     df['ATR_Stop'] = df['High'].rolling(10).max() - (2.5 * df['ATR'])
 
     stock_60d_ret = (df['Close'].iloc[-1] - df['Close'].iloc[-60]) / df['Close'].iloc[-60] * 100 if len(df) >= 60 else 0
-    twii_60d_ret = (twii['Close'].iloc[-1] - twii['Close'].iloc[-60]) / twii['Close'].iloc[
-        -60] * 100 if not twii.empty and len(twii) >= 60 else 0
+    twii_60d_ret = (twii['Close'].iloc[-1] - twii['Close'].iloc[-60]) / twii['Close'].iloc[-60] * 100 if not twii.empty and len(twii) >= 60 else 0
     rs_outperform = stock_60d_ret - twii_60d_ret
 
     latest = df.iloc[-1]
@@ -280,8 +297,7 @@ def fetch_data(ticker):
     mfi_shape = get_trend_shape(df['MFI'])
     obv_shape = get_trend_shape(df['OBV'])
 
-    n_shape_data = {'is_valid': False, 'first_bottom': 0, 'first_high': 0, 'second_bottom': 0, 'fib_1x': 0,
-                    'fib_1618': 0}
+    n_shape_data = {'is_valid': False, 'first_bottom': 0, 'first_high': 0, 'second_bottom': 0, 'fib_1x': 0, 'fib_1618': 0}
     if len(df) >= 60:
         recent_60_df = df.iloc[-60:]
         first_bottom = recent_60_df['Low'].min()
@@ -293,8 +309,7 @@ def fetch_data(ticker):
             after_high_df = df.loc[idx_high:]
             if len(after_high_df) > 1:
                 second_bottom = after_high_df['Low'].min()
-                if (second_bottom > first_bottom) and (first_high > first_bottom * 1.05) and (
-                        latest['Close'] > second_bottom):
+                if (second_bottom > first_bottom) and (first_high > first_bottom * 1.05) and (latest['Close'] > second_bottom):
                     n_shape_data['is_valid'] = True
                     n_shape_data['first_bottom'] = first_bottom
                     n_shape_data['first_high'] = first_high
@@ -313,32 +328,20 @@ def fetch_data(ticker):
 
     if len(df) >= 5:
         prev2 = df.iloc[-3]
-        pa_flags["pa1_no_limit"] = (latest['High'] >= prev['Close'] * 1.07) and (
-                    latest['Close'] < prev['Close'] * 1.095) and (upperShadow > realBody * 0.5)
-        pa_flags["pa2_gap_down"] = (latest['Open'] <= prev['Close'] * 0.97) and (
-                    latest['Close'] <= latest['Open']) and (latest['Volume'] > latest['MV5'])
+        pa_flags["pa1_no_limit"] = (latest['High'] >= prev['Close'] * 1.07) and (latest['Close'] < prev['Close'] * 1.095) and (upperShadow > realBody * 0.5)
+        pa_flags["pa2_gap_down"] = (latest['Open'] <= prev['Close'] * 0.97) and (latest['Close'] <= latest['Open']) and (latest['Volume'] > latest['MV5'])
         pa_flags["pa3_engulf"] = (latest['Open'] > prev['Close']) and (latest['Close'] < prev['Close'])
         recent_3_highs_max = df['High'].iloc[-3:].max()
-        pa_flags["pa4_stagnant"] = (latest['Close'] > latest['MA20']) and (latest['RSI'] > 60) and (
-                    recent_3_highs_max <= df['High'].iloc[-4]) and (df['Volume'].iloc[-3:].mean() > latest['MV20'])
-        pa_flags["pa5_trap"] = (upperShadow > realBody * 2) and (latest['High'] >= df['High'].iloc[-5:].max()) and (
-                    latest['Volume'] > latest['MV5']) and latest['RSI'] > 65
-        pa_flags["pa6_ma_break"] = (prev2['Close'] >= prev2['MA20']) and (prev['Close'] < prev['MA20']) and (
-                    latest['Close'] < latest['MA20'])
-        pa_flags["pa7_three_soldiers"] = (latest['Close'] > latest['Open']) and (prev['Close'] > prev['Open']) and (
-                    prev2['Close'] > prev2['Open']) and (latest['Close'] > prev['Close'])
-        pa_flags["pa8_three_crows"] = (latest['Close'] < latest['Open']) and (prev['Close'] < prev['Open']) and (
-                    prev2['Close'] < prev2['Open']) and (latest['Close'] < prev['Close'])
-        pa_flags["pa9_bull_pinbar"] = (lowerShadow > realBody * 2) and (
-                    (latest['Low'] <= latest['BBL'] * 1.01) or (latest['Low'] <= latest['MA60'])) and latest['RSI'] < 35
-        pa_flags["pa10_bull_engulfing"] = (prev['Close'] < prev['Open']) and (latest['Open'] < prev['Close']) and (
-                    latest['Close'] > prev['Open']) and (latest['Close'] > latest['Open']) and latest['RSI'] < 50
+        pa_flags["pa4_stagnant"] = (latest['Close'] > latest['MA20']) and (latest['RSI'] > 60) and (recent_3_highs_max <= df['High'].iloc[-4]) and (df['Volume'].iloc[-3:].mean() > latest['MV20'])
+        pa_flags["pa5_trap"] = (upperShadow > realBody * 2) and (latest['High'] >= df['High'].iloc[-5:].max()) and (latest['Volume'] > latest['MV5']) and latest['RSI'] > 65
+        pa_flags["pa6_ma_break"] = (prev2['Close'] >= prev2['MA20']) and (prev['Close'] < prev['MA20']) and (latest['Close'] < latest['MA20'])
+        pa_flags["pa7_three_soldiers"] = (latest['Close'] > latest['Open']) and (prev['Close'] > prev['Open']) and (prev2['Close'] > prev2['Open']) and (latest['Close'] > prev['Close'])
+        pa_flags["pa8_three_crows"] = (latest['Close'] < latest['Open']) and (prev['Close'] < prev['Open']) and (prev2['Close'] < prev2['Open']) and (latest['Close'] < prev['Close'])
+        pa_flags["pa9_bull_pinbar"] = (lowerShadow > realBody * 2) and ((latest['Low'] <= latest['BBL'] * 1.01) or (latest['Low'] <= latest['MA60'])) and latest['RSI'] < 35
+        pa_flags["pa10_bull_engulfing"] = (prev['Close'] < prev['Open']) and (latest['Open'] < prev['Close']) and (latest['Close'] > prev['Open']) and (latest['Close'] > latest['Open']) and latest['RSI'] < 50
 
-    pa_penalty = 25 if (pa_flags["pa2_gap_down"] or pa_flags["pa6_ma_break"] or pa_flags["pa8_three_crows"]) else (
-        15 if (pa_flags["pa1_no_limit"] or pa_flags["pa3_engulf"] or pa_flags["pa4_stagnant"] or pa_flags[
-            "pa5_trap"]) else 0)
-    pa_bonus = 20 if (pa_flags["pa9_bull_pinbar"] or pa_flags["pa10_bull_engulfing"]) else (
-        10 if pa_flags["pa7_three_soldiers"] else 0)
+    pa_penalty = 25 if (pa_flags["pa2_gap_down"] or pa_flags["pa6_ma_break"] or pa_flags["pa8_three_crows"]) else (15 if (pa_flags["pa1_no_limit"] or pa_flags["pa3_engulf"] or pa_flags["pa4_stagnant"] or pa_flags["pa5_trap"]) else 0)
+    pa_bonus = 20 if (pa_flags["pa9_bull_pinbar"] or pa_flags["pa10_bull_engulfing"]) else (10 if pa_flags["pa7_three_soldiers"] else 0)
 
     is_squeezed = False
     is_vol_surge = False
@@ -354,57 +357,36 @@ def fetch_data(ticker):
 
     ma_up = "上揚" in ma20_shape or "向上" in ma20_shape
     ma_down = "向下" in ma20_shape
-    if latest['Close'] >= latest['MA20'] and ma_up:
-        a_rank, a_desc = "A+", "20日線上升且現價站穩月線"
-    elif latest['Close'] < latest['MA20'] and ma_down:
-        a_rank, a_desc = "A-", "20日線下彎且跌破月線"
-    else:
-        a_rank, a_desc = "A", "均線平移或方向分歧"
+    if latest['Close'] >= latest['MA20'] and ma_up: a_rank, a_desc = "A+", "20日線上升且現價站穩月線"
+    elif latest['Close'] < latest['MA20'] and ma_down: a_rank, a_desc = "A-", "20日線下彎且跌破月線"
+    else: a_rank, a_desc = "A", "均線平移或方向分歧"
 
     up_count = sum(1 for s in [rsi_shape, mfi_shape] if "上揚" in s or "向上" in s)
     down_count = sum(1 for s in [rsi_shape, mfi_shape] if "向下" in s)
-    if up_count == 2 or (up_count == 1 and down_count == 0):
-        b_rank, b_desc = "B+", "RSI/MFI 買盤動能共振向上"
-    elif down_count == 2 or (down_count == 1 and up_count == 0):
-        b_rank, b_desc = "B-", "RSI/MFI 賣壓動能共振向下"
-    else:
-        b_rank, b_desc = "B", "RSI/MFI 動能分歧或平移震盪"
+    if up_count == 2 or (up_count == 1 and down_count == 0): b_rank, b_desc = "B+", "RSI/MFI 買盤動能共振向上"
+    elif down_count == 2 or (down_count == 1 and up_count == 0): b_rank, b_desc = "B-", "RSI/MFI 賣壓動能共振向下"
+    else: b_rank, b_desc = "B", "RSI/MFI 動能分歧或平移震盪"
 
-    if pa_penalty > 0:
-        a_rank, b_rank = "A-", "B-"
-    elif pa_bonus > 0:
-        a_rank, b_rank = "A+", "B+"
+    if pa_penalty > 0: a_rank, b_rank = "A-", "B-"
+    elif pa_bonus > 0: a_rank, b_rank = "A+", "B+"
 
-    if a_rank == "A+" and b_rank == "B+":
-        title, msg = "趨勢動能共振 (強勢攻擊)", "大結構偏多且短線買盤強勁。"
-    elif a_rank == "A+" and b_rank in ["B", "B-"]:
-        title, msg = "多頭回檔洗盤 (長多短空)", "主因：20MA反映長線『趨勢』仍在墊高；RSI/MFI反映近幾日『短線震盪』。"
-    elif a_rank == "A-" and b_rank in ["B+", "B"]:
-        title, msg = "左側背離潛伏 (長空短多)", "主因：長線趨勢雖偏空，但底層動能率先發動。"
-    elif a_rank == "A-" and b_rank == "B-":
-        title, msg = "空頭共振探底 (極度弱勢)", "長線與短線同步下殺。切勿阻擋墜落的刀子！"
-    elif a_rank == "A" and b_rank == "B+":
-        title, msg = "震盪轉強突破 (醞釀表態)", "長線處於過渡期，短線資金點火。"
-    elif a_rank == "A" and b_rank == "B-":
-        title, msg = "震盪轉弱防守 (面臨考驗)", "動能衰退，需嚴格防守下方支撐。"
-    else:
-        title, msg = "多空分歧沉澱 (方向未明)", "趨勢與動能尚無共識，觀望為主。"
+    if a_rank == "A+" and b_rank == "B+": title, msg = "趨勢動能共振 (強勢攻擊)", "大結構偏多且短線買盤強勁。"
+    elif a_rank == "A+" and b_rank in ["B", "B-"]: title, msg = "多頭回檔洗盤 (長多短空)", "主因：20MA反映長線『趨勢』仍在墊高；RSI/MFI反映近幾日『短線震盪』。"
+    elif a_rank == "A-" and b_rank in ["B+", "B"]: title, msg = "左側背離潛伏 (長空短多)", "主因：長線趨勢雖偏空，但底層動能率先發動。"
+    elif a_rank == "A-" and b_rank == "B-": title, msg = "空頭共振探底 (極度弱勢)", "長線與短線同步下殺。切勿阻擋墜落的刀子！"
+    elif a_rank == "A" and b_rank == "B+": title, msg = "震盪轉強突破 (醞釀表態)", "長線處於過渡期，短線資金點火。"
+    elif a_rank == "A" and b_rank == "B-": title, msg = "震盪轉弱防守 (面臨考驗)", "動能衰退，需嚴格防守下方支撐。"
+    else: title, msg = "多空分歧沉澱 (方向未明)", "趨勢與動能尚無共識，觀望為主。"
 
-    alpha_score = max(0, (25 if a_rank in ["A+", "S+"] else (15 if a_rank == "A" else 0)) + (
-        25 if b_rank in ["B+", "S+"] else (15 if b_rank == "B" else 0)) - pa_penalty + pa_bonus)
+    alpha_score = max(0, (25 if a_rank in ["A+", "S+"] else (15 if a_rank == "A" else 0)) + (25 if b_rank in ["B+", "S+"] else (15 if b_rank == "B" else 0)) - pa_penalty + pa_bonus)
     total_score = max(0, min(100, macro_score + flow_score + alpha_score))
 
     scenario_type = "default"
-    if is_holy_grail:
-        scenario_type = "holy_grail"
-    elif pa_flags["pa9_bull_pinbar"] or pa_flags["pa10_bull_engulfing"]:
-        scenario_type = "golden_pit"
-    elif latest['Close'] > latest['MA20'] and t_buy >= 0:
-        scenario_type = "strong_attack"
-    elif latest['Close'] > latest['MA20'] and f_buy < 0 and t_buy < 0:
-        scenario_type = "bull_trap"
-    else:
-        scenario_type = "dead_cat"
+    if is_holy_grail: scenario_type = "holy_grail"
+    elif pa_flags["pa9_bull_pinbar"] or pa_flags["pa10_bull_engulfing"]: scenario_type = "golden_pit"
+    elif latest['Close'] > latest['MA20'] and t_buy >= 0: scenario_type = "strong_attack"
+    elif latest['Close'] > latest['MA20'] and f_buy < 0 and t_buy < 0: scenario_type = "bull_trap"
+    else: scenario_type = "dead_cat"
 
     df.index = df.index.tz_localize(None)
     return {
@@ -415,12 +397,10 @@ def fetch_data(ticker):
         "atm_risk": atm_risk, "macro_msg": macro_msg, "macro_score": macro_score, "flow_score": flow_score,
         "alpha_score": alpha_score, "total_score": total_score,
         "rsi_shape": rsi_shape, "mfi_shape": mfi_shape, "obv_shape": obv_shape,
-        "hg_flags": {"squeezed": is_squeezed, "vol_surge": is_vol_surge, "breakout": is_price_breakout,
-                     "obv_surge": is_obv_surge},
+        "hg_flags": {"squeezed": is_squeezed, "vol_surge": is_vol_surge, "breakout": is_price_breakout, "obv_surge": is_obv_surge},
         "n_shape": n_shape_data, "roe": roe_val, "poc_price": poc_price, "atr_stop": latest['ATR_Stop'],
         "rs_outperform": rs_outperform
     }
-
 
 def get_unified_command(data, macro_html):
     sc = data['scenario']
@@ -429,41 +409,27 @@ def get_unified_command(data, macro_html):
     atr_s = data['atr_stop']
     hg = data['hg_flags']
     rs = data['rs_outperform']
-
-    # 【Bug 修復 & 新增功能 2】計算成交量狀態並產出 Badge
+    
     latest_vol = data['latest']['Volume']
     mv20 = data['latest']['MV20']
     vol_ratio = latest_vol / mv20 if pd.notna(mv20) and mv20 > 0 else 1
 
     if vol_ratio < 0.5:
-        vol_state = "低量"
-        vol_desc = f"僅20日均量 {vol_ratio * 100:.0f}%"
-        vol_color = "#6c757d"
+        vol_state, vol_desc, vol_color = "低量", f"僅20日均量 {vol_ratio*100:.0f}%", "#6c757d"
     elif vol_ratio < 0.85:
-        vol_state = "偏低"
-        vol_desc = f"約20日均量 {vol_ratio * 100:.0f}%"
-        vol_color = "#adb5bd"
+        vol_state, vol_desc, vol_color = "偏低", f"約20日均量 {vol_ratio*100:.0f}%", "#adb5bd"
     elif vol_ratio <= 1.15:
-        vol_state = "20日平均"
-        vol_desc = "量能持平"
-        vol_color = "#1a252f"
+        vol_state, vol_desc, vol_color = "20日平均", "量能持平", "#1a252f"
     elif vol_ratio <= 2.0:
-        vol_state = "平均之上"
-        vol_desc = f"達20日均量 {vol_ratio * 100:.0f}%"
-        vol_color = "#fd7e14"
+        vol_state, vol_desc, vol_color = "平均之上", f"達20日均量 {vol_ratio*100:.0f}%", "#fd7e14"
     else:
-        vol_state = "放量"
-        vol_desc = f"高達20日均量 {vol_ratio:.1f} 倍"
-        vol_color = "#dc3545"
+        vol_state, vol_desc, vol_color = "放量", f"高達20日均量 {vol_ratio:.1f} 倍", "#dc3545"
 
     vol_badge = f"<div style='display:inline-block; background-color:{vol_color}15; color:{vol_color}; padding:4px 10px; border-radius:6px; font-size:0.95rem; margin-top:8px; border:1px solid {vol_color}40;'><i class='fas fa-water'></i> 當日量能狀態：<b>{vol_state}</b> ({vol_desc})</div>"
 
-    if hg['squeezed'] and hg['vol_surge'] and hg['breakout'] and hg['obv_surge']:
-        radar_result = "<span style='color:#dc3545; font-weight:900;'>型態符合 🚀</span>"
-    elif hg['squeezed']:
-        radar_result = "<span style='color:#fd7e14; font-weight:900;'>型態築底中 ⏳</span>"
-    else:
-        radar_result = "<span style='color:#6c757d; font-weight:900;'>型態不符 ❌</span>"
+    if hg['squeezed'] and hg['vol_surge'] and hg['breakout'] and hg['obv_surge']: radar_result = "<span style='color:#dc3545; font-weight:900;'>型態符合 🚀</span>"
+    elif hg['squeezed']: radar_result = "<span style='color:#fd7e14; font-weight:900;'>型態築底中 ⏳</span>"
+    else: radar_result = "<span style='color:#6c757d; font-weight:900;'>型態不符 ❌</span>"
 
     radar_macro_html = f"""
     <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-top: 20px; align-items: stretch;">
@@ -519,11 +485,8 @@ def get_unified_command(data, macro_html):
         else:
             title, color, msg = "⚖️ 震盪盤整：等待方向表態", "#1a252f", f"股價反覆測試，多空勢均力敵。建議空手觀望，等待帶量脫離此區域再行佈局。"
 
-    # 【Bug 修復 & 新增功能 2】將量能狀態 Badge 融合進系統判定中
     final_sys_status = f"{sys_status}<br>{vol_badge}"
-
     return final_sys_status, title, msg, color, radar_macro_html
-
 
 def generate_execution_script(data):
     sc = data['scenario']
@@ -532,60 +495,40 @@ def generate_execution_script(data):
     vBBUpper = f"{latest['BBU']:.2f}"
 
     if sc in ["holy_grail", "strong_attack"]:
-        obs = [f"開盤即出量跳空越過 {vBBUpper}", f"踩穩均價線 ({vVWAP}) 上攻", "盤中回測皆是量縮", "高檔量滾量強勢震盪",
-               "大單強勢鎖死或收最高"]
-        act = ["確認突破，市價敲進底倉", f"現價不破 {vVWAP} 積極加碼", f"回測 {vVWAP} 有守果斷重壓",
-               "死抱不放，讓利潤奔跑", "強勢多頭確立，安心留倉"]
+        obs = [f"開盤即出量跳空越過 {vBBUpper}", f"踩穩均價線 ({vVWAP}) 上攻", "盤中回測皆是量縮", "高檔量滾量強勢震盪", "大單強勢鎖死或收最高"]
+        act = ["確認突破，市價敲進底倉", f"現價不破 {vVWAP} 積極加碼", f"回測 {vVWAP} 有守果斷重壓", "死抱不放，讓利潤奔跑", "強勢多頭確立，安心留倉"]
     elif sc == "golden_pit":
-        obs = ["試撮開低製造恐慌", f"破底後強勢站回 {vVWAP}", "在 POC 附近吸籌", "量縮橫盤讓市場遺忘",
-               "拉回收長下影線或吞噬紅K"]
-        act = ["觀察是否為刻意洗盤", f"站穩 {vVWAP} 是絕佳左側試單點", "趁恐慌打底分批買進", "持股耐心續抱",
-               "破今日低點停損，否則留倉"]
+        obs = ["試撮開低製造恐慌", f"破底後強勢站回 {vVWAP}", "在 POC 附近吸籌", "量縮橫盤讓市場遺忘", "拉回收長下影線或吞噬紅K"]
+        act = ["觀察是否為刻意洗盤", f"站穩 {vVWAP} 是絕佳左側試單點", "趁恐慌打底分批買進", "持股耐心續抱", "破今日低點停損，否則留倉"]
     else:
-        obs = ["試撮異常強勢掛假單", f"急拉過高後爆量破 {vVWAP}", "股價緩跌破開盤價(A轉)", "護盤防守避免崩盤",
-               "收黑K或長上影線"]
-        act = ["防範拉高出貨", f"破 {vVWAP} 嚴禁追高", f"反彈不過 {vVWAP} 是逃命波", "多單準備撤退",
-               "跌破生命線明日即走"]
+        obs = ["試撮異常強勢掛假單", f"急拉過高後爆量破 {vVWAP}", "股價緩跌破開盤價(A轉)", "護盤防守避免崩盤", "收黑K或長上影線"]
+        act = ["防範拉高出貨", f"破 {vVWAP} 嚴禁追高", f"反彈不過 {vVWAP} 是逃命波", "多單準備撤退", "跌破生命線明日即走"]
     return obs, act
-
 
 def compute_hist_ab_verify(row, prev_row, poc_price):
     isAboveMA20 = row['Close'] > row['MA20']
     isMomentumBull = (row['Volume'] > row['MV5']) or (row['RSI'] > 50)
     isChipBearish = row['MFI'] < 50
     if isAboveMA20:
-        if isMomentumBull:
-            return "⚠️ 誘多反彈" if isChipBearish else ("⚠️ 觸碰上軌" if row['Close'] >= row['BBU'] else "🔥 雙多頭")
-        else:
-            return "⚠️ 多頭量縮"
+        if isMomentumBull: return "⚠️ 誘多反彈" if isChipBearish else ("⚠️ 觸碰上軌" if row['Close'] >= row['BBU'] else "🔥 雙多頭")
+        else: return "⚠️ 多頭量縮"
     else:
-        if row['Low'] <= row['BBL'] and row['RSI'] < 45:
-            return "🧲 下軌超賣"
-        elif prev_row['MA20'] < row['MA20'] and row['Close'] >= poc_price:
-            return "💎 黃金坑"
-        else:
-            return "📉 跌深反彈" if isMomentumBull else "☠️ 雙空頭"
-
+        if row['Low'] <= row['BBL'] and row['RSI'] < 45: return "🧲 下軌超賣"
+        elif prev_row['MA20'] < row['MA20'] and row['Close'] >= poc_price: return "💎 黃金坑"
+        else: return "📉 跌深反彈" if isMomentumBull else "☠️ 雙空頭"
 
 def compute_hist_pattern(row):
-    if row['MA5'] > row['MA10'] and row['MA10'] > row['MA20']:
-        return "📈 多頭排列"
-    elif row['MA5'] < row['MA10'] and row['MA10'] < row['MA20']:
-        return "📉 空頭排列"
-    elif row['Close'] > row['MA20']:
-        return "🔄 震盪偏多"
-    else:
-        return "🔄 震盪偏空"
-
+    if row['MA5'] > row['MA10'] and row['MA10'] > row['MA20']: return "📈 多頭排列"
+    elif row['MA5'] < row['MA10'] and row['MA10'] < row['MA20']: return "📉 空頭排列"
+    elif row['Close'] > row['MA20']: return "🔄 震盪偏多"
+    else: return "🔄 震盪偏空"
 
 # ==========================================
 # UI 介面繪製
 # ==========================================
-st.title("🏦 全方位個股掃描系統 V8.9 (QuantSight)")
-render_html(
-    "<div class='disclaimer'>本程式僅供個人及親友交流使用，不涉及商業用途。使用者須自行承擔使用過程中之風險，開發者不對任何直接或間接損害、法律責任或爭議負責。</div>")
+st.title("🏦 全方位個股掃描系統 V8.10 (QuantSight)")
+render_html("<div class='disclaimer'>本程式僅供個人及親友交流使用，不涉及商業用途。使用者須自行承擔使用過程中之風險，開發者不對任何直接或間接損害、法律責任或爭議負責。</div>")
 
-# ====== Row 1: 搜尋列 ======
 col1, col2 = st.columns([1, 3])
 with col1:
     ticker_input = st.text_input("股票代號 (如 2330)", "")
@@ -605,22 +548,16 @@ if run_btn and ticker_input:
             # ====== Row 2: Hero Banner ======
             roe = data['roe']
             if roe is not None:
-                if roe >= 15:
-                    light, color, desc = "🟢", "#198754", "極佳 (獲利資優生)"
-                elif roe >= 12:
-                    light, color, desc = "🟢", "#198754", "好公司 (符合標準)"
-                elif roe >= 8:
-                    light, color, desc = "🟡", "#fd7e14", "普通 (尚可接受)"
-                else:
-                    light, color, desc = "🔴", "#dc3545", "偏弱 (資金效率低)"
+                if roe >= 15: light, color, desc = "🟢", "#198754", "極佳 (獲利資優生)"
+                elif roe >= 12: light, color, desc = "🟢", "#198754", "好公司 (符合標準)"
+                elif roe >= 8: light, color, desc = "🟡", "#fd7e14", "普通 (尚可接受)"
+                else: light, color, desc = "🔴", "#dc3545", "偏弱 (資金效率低)"
                 roe_display = f"{roe:.2f}%"
             else:
                 light, color, desc, roe_display = "⚪", "#6c757d", "無資料", "--"
 
             pct_color = "#dc3545" if latest['Pct_Change'] > 0 else "#20c997"
             sign = "+" if latest['Pct_Change'] > 0 else ""
-
-            # 【新增功能 1】換算張數並加上千分位，準備放入 UI 介面
             latest_vol_sheets = int(latest['Volume'] / 1000)
 
             render_html(f"""
@@ -652,8 +589,7 @@ if run_btn and ticker_input:
                 """)
 
             # ====== Row 3: 大一統指令 ======
-            sys_status, verdict_title, coach_msg, verdict_color, radar_macro_html = get_unified_command(data, data[
-                'macro_msg'])
+            sys_status, verdict_title, coach_msg, verdict_color, radar_macro_html = get_unified_command(data, data['macro_msg'])
 
             render_html(f"""
             <div style="background-color: #fff; border-left: 8px solid {verdict_color}; padding: 25px 30px; border-radius: 12px; margin-bottom: 25px; box-shadow: 0 8px 16px rgba(0,0,0,0.06); border: 1px solid #f1f3f5;">
@@ -683,9 +619,7 @@ if run_btn and ticker_input:
             """)
 
             # ====== Row 5: V8 機構級三大核心引擎 ======
-            st.markdown(
-                f"<h3 style='color:#1a252f; margin-top:10px; margin-bottom:15px; font-weight:800;'><i class='fas fa-cogs'></i> V8 機構級 3D 立體戰略引擎</h3>",
-                unsafe_allow_html=True)
+            st.markdown(f"<h3 style='color:#1a252f; margin-top:10px; margin-bottom:15px; font-weight:800;'><i class='fas fa-cogs'></i> V8 機構級 3D 立體戰略引擎</h3>", unsafe_allow_html=True)
             ce1, ce2, ce3 = st.columns(3)
             with ce1:
                 rs = data['rs_outperform']
@@ -694,7 +628,7 @@ if run_btn and ticker_input:
                 rs_w_right = min(max(0, rs) / max_bar * 50, 50)
                 rs_w_left = min(max(0, -rs) / max_bar * 50, 50)
                 rs_desc = "🔥 <b>強勢領漲</b>：資金高度青睞的市場領頭羊！" if rs > 0 else "🐢 <b>弱勢落後</b>：資金未進駐，若有上漲多屬跌深反彈。"
-
+                
                 render_html(f"""
                 <div class="pro-card card-rs">
                     <div class="pro-title">🥇 RS 相對大盤強弱</div>
@@ -811,19 +745,13 @@ if run_btn and ticker_input:
                     </div>
                     """)
                 else:
-                    f_act = f"連買 {data['f_days']} 天" if data['f_days'] > 0 else (
-                        f"連賣 {abs(data['f_days'])} 天" if data['f_days'] < 0 else "無動靜")
-                    t_act = f"連買 {data['t_days']} 天" if data['t_days'] > 0 else (
-                        f"連賣 {abs(data['t_days'])} 天" if data['t_days'] < 0 else "無動靜")
+                    f_act = f"連買 {data['f_days']} 天" if data['f_days'] > 0 else (f"連賣 {abs(data['f_days'])} 天" if data['f_days'] < 0 else "無動靜")
+                    t_act = f"連買 {data['t_days']} 天" if data['t_days'] > 0 else (f"連賣 {abs(data['t_days'])} 天" if data['t_days'] < 0 else "無動靜")
                     f_buy, t_buy = data['f_buy'], data['t_buy']
-                    if f_buy < 0 and t_buy > 0:
-                        health_msg = "🛡️ 內資護盤 (良性換手)"
-                    elif f_buy > 0 and t_buy > 0:
-                        health_msg = "🔥 土洋齊買 (強勢集中)"
-                    elif f_buy < 0 and t_buy < 0:
-                        health_msg = "☠️ 土洋齊賣 (失血警戒)"
-                    else:
-                        health_msg = "⚖️ 法人分歧 (震盪沉澱)"
+                    if f_buy < 0 and t_buy > 0: health_msg = "🛡️ 內資護盤 (良性換手)"
+                    elif f_buy > 0 and t_buy > 0: health_msg = "🔥 土洋齊買 (強勢集中)"
+                    elif f_buy < 0 and t_buy < 0: health_msg = "☠️ 土洋齊賣 (失血警戒)"
+                    else: health_msg = "⚖️ 法人分歧 (震盪沉澱)"
 
                     render_html(f"""
                     <div class="pro-card card-flow">
@@ -845,12 +773,10 @@ if run_btn and ticker_input:
                 rsi_shape = data['rsi_shape']
                 mfi_shape = data['mfi_shape']
 
-
                 def get_trend_color(shape_str):
                     if "上揚" in shape_str or "向上" in shape_str: return "#198754"
                     if "向下" in shape_str or "下彎" in shape_str: return "#dc3545"
                     return "#6c757d"
-
 
                 rsi_color = get_trend_color(rsi_shape)
                 mfi_color = get_trend_color(mfi_shape)
@@ -938,19 +864,15 @@ if run_btn and ticker_input:
 
             with col_t3_right:
                 pa = data['pa_flags']
-                bull_power = (15 if pa["pa7_three_soldiers"] else 0) + (20 if pa["pa9_bull_pinbar"] else 0) + (
-                    25 if pa["pa10_bull_engulfing"] else 0)
-                bear_power = (10 if pa["pa1_no_limit"] else 0) + (25 if pa["pa2_gap_down"] else 0) + (
-                    15 if pa["pa3_engulf"] else 0) + (15 if pa["pa4_stagnant"] else 0) + (
-                                 20 if pa["pa5_trap"] else 0) + (25 if pa["pa6_ma_break"] else 0) + (
-                                 25 if pa["pa8_three_crows"] else 0)
+                bull_power = (15 if pa["pa7_three_soldiers"] else 0) + (20 if pa["pa9_bull_pinbar"] else 0) + (25 if pa["pa10_bull_engulfing"] else 0)
+                bear_power = (10 if pa["pa1_no_limit"] else 0) + (25 if pa["pa2_gap_down"] else 0) + (15 if pa["pa3_engulf"] else 0) + (15 if pa["pa4_stagnant"] else 0) + (20 if pa["pa5_trap"] else 0) + (25 if pa["pa6_ma_break"] else 0) + (25 if pa["pa8_three_crows"] else 0)
                 total_power = bull_power + bear_power
                 bull_pct = (bull_power / total_power * 100) if total_power > 0 else 50
                 bear_pct = (bear_power / total_power * 100) if total_power > 0 else 50
 
                 pa_html = f"""
                 <div class='pro-card card-pa'>
-                    <div class='pro-title'>🕯️ 裸 K 價格行為 (V8.9 語義學診斷)</div>
+                    <div class='pro-title'>🕯️ 裸 K 價格行為 (V8.10 語義學診斷)</div>
                     <div style="margin-bottom: 25px; padding: 15px; background-color: #fdfdfe; border-radius: 8px; border: 1px solid #dee2e6; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
                         <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-weight: 800; font-size: 0.95rem;">
                             <span style="color: #198754;"><i class="fas fa-arrow-up"></i> 多方攻擊力道 ({bull_power})</span>
@@ -1008,30 +930,19 @@ if run_btn and ticker_input:
             st.divider()
 
             # ====== Row 8: 滿版圖表 ======
-            render_html(
-                f"<h3 style='color:#1a252f; font-weight:800;'><i class='fas fa-chart-area'></i> 主力籌碼堆疊與 ATR 追蹤圖 - {stock_name}</h3>")
+            render_html(f"<h3 style='color:#1a252f; font-weight:800;'><i class='fas fa-chart-area'></i> 主力籌碼堆疊與 ATR 追蹤圖 - {stock_name}</h3>")
 
             df_plot = data['df'].tail(120).copy()
             df_plot.index = df_plot.index.strftime('%y/%m/%d')
 
             fig1 = go.Figure()
-            fig1.add_trace(
-                go.Candlestick(x=df_plot.index, open=df_plot['Open'], high=df_plot['High'], low=df_plot['Low'],
-                               close=df_plot['Close'], name='K線'))
-            fig1.add_trace(go.Scatter(x=df_plot.index, y=df_plot['ATR_Stop'], name='ATR 動態防守線',
-                                      line=dict(color='#dc3545', width=2, dash='dot')))
-            fig1.add_trace(
-                go.Scatter(x=df_plot.index, y=[data['poc_price']] * len(df_plot), name='VPVR 籌碼控制點 (POC)',
-                           line=dict(color='#6f42c1', width=3)))
-            fig1.add_trace(
-                go.Scatter(x=df_plot.index, y=df_plot['MA5'], name='5MA', line=dict(color='#fcd456', width=1.5)))
-            fig1.add_trace(
-                go.Scatter(x=df_plot.index, y=df_plot['MA20'], name='20MA', line=dict(color='#212529', width=1.5)))
-            fig1.add_trace(
-                go.Scatter(x=df_plot.index, y=df_plot['BBU'], name='布林上軌', line=dict(color='#0d6efd', width=1)))
-            fig1.add_trace(
-                go.Scatter(x=df_plot.index, y=df_plot['BBL'], name='布林下軌', line=dict(color='#0d6efd', width=1),
-                           fill='tonexty', fillcolor='rgba(13, 110, 253, 0.05)'))
+            fig1.add_trace(go.Candlestick(x=df_plot.index, open=df_plot['Open'], high=df_plot['High'], low=df_plot['Low'], close=df_plot['Close'], name='K線'))
+            fig1.add_trace(go.Scatter(x=df_plot.index, y=df_plot['ATR_Stop'], name='ATR 動態防守線', line=dict(color='#dc3545', width=2, dash='dot')))
+            fig1.add_trace(go.Scatter(x=df_plot.index, y=[data['poc_price']] * len(df_plot), name='VPVR 籌碼控制點 (POC)', line=dict(color='#6f42c1', width=3)))
+            fig1.add_trace(go.Scatter(x=df_plot.index, y=df_plot['MA5'], name='5MA', line=dict(color='#fcd456', width=1.5)))
+            fig1.add_trace(go.Scatter(x=df_plot.index, y=df_plot['MA20'], name='20MA', line=dict(color='#212529', width=1.5)))
+            fig1.add_trace(go.Scatter(x=df_plot.index, y=df_plot['BBU'], name='布林上軌', line=dict(color='#0d6efd', width=1)))
+            fig1.add_trace(go.Scatter(x=df_plot.index, y=df_plot['BBL'], name='布林下軌', line=dict(color='#0d6efd', width=1), fill='tonexty', fillcolor='rgba(13, 110, 253, 0.05)'))
 
             fig1.update_layout(
                 height=550, margin=dict(l=10, r=10, t=30, b=50), template="plotly_white", hovermode="x unified",
@@ -1045,8 +956,7 @@ if run_btn and ticker_input:
             # ====== Row 9: 120 日歷史動態回測表 ======
             col_t1, col_t2 = st.columns([8, 2])
             with col_t1:
-                render_html(
-                    f"<h3 style='color:#1a252f; font-weight:800;'><i class='fas fa-table'></i> {stock_name} ({clean_ticker}) 近期 120 日交易數據回測</h3>")
+                render_html(f"<h3 style='color:#1a252f; font-weight:800;'><i class='fas fa-table'></i> {stock_name} ({clean_ticker}) 近期 120 日交易數據回測</h3>")
 
             df_hist = data['df'].tail(121).copy()
             csv_rows = ["日期,收盤,漲跌,漲跌幅(%),成交量(張),MA5,MA20,VPVR_POC,ATR防守價,RSI(14),MFI(14),AB驗證,型態"]
@@ -1059,7 +969,7 @@ if run_btn and ticker_input:
 
                 c_color = "text-danger" if row['Pct_Change'] > 0 else ("text-success" if row['Pct_Change'] < 0 else "")
                 change_str = f"{row['Close'] - prev['Close']:+.1f} ({row['Pct_Change']:+.2f}%)"
-
+                
                 vol_str = f"{int(row['Volume'] / 1000):,}"
 
                 ab_v = compute_hist_ab_verify(row, prev, data['poc_price'])
@@ -1077,20 +987,15 @@ if run_btn and ticker_input:
                 tr_content = f'<tr><td class="fw-bold">{date_str}</td><td class="{c_color} fw-bold">{row["Close"]:.2f}</td><td class="{c_color}">{change_str}</td><td>{vol_str}</td><td>{row["MA5"]:.2f}</td><td>{row["MA20"]:.2f}</td><td style="color:#6f42c1; font-weight:bold;">{data["poc_price"]:.2f}</td><td style="color:#dc3545; font-weight:bold;">{row["ATR_Stop"]:.2f}</td><td>{row["RSI"]:.1f}</td><td>{row["MFI"]:.1f}</td><td>{ab_html}</td><td><small class="text-muted">{pat}</small></td></tr>'
                 rows_html.append(tr_content)
 
-                csv_ab = ab_v.replace('⚠️ ', '').replace('🔥 ', '').replace('🧲 ', '').replace('💎 ', '').replace('📉 ',
-                                                                                                               '').replace(
-                    '☠️ ', '')
+                csv_ab = ab_v.replace('⚠️ ', '').replace('🔥 ', '').replace('🧲 ', '').replace('💎 ', '').replace('📉 ', '').replace('☠️ ', '')
                 csv_pat = pat.replace('📈 ', '').replace('📉 ', '').replace('🔄 ', '')
-                csv_rows.append(
-                    f"{date_str},{row['Close']:.2f},{row['Close'] - prev['Close']:.1f},{row['Pct_Change']:.2f}%,{int(row['Volume'] / 1000)},{row['MA5']:.2f},{row['MA20']:.2f},{data['poc_price']:.2f},{row['ATR_Stop']:.2f},{row['RSI']:.1f},{row['MFI']:.1f},{csv_ab},{csv_pat}")
+                csv_rows.append(f"{date_str},{row['Close']:.2f},{row['Close'] - prev['Close']:.1f},{row['Pct_Change']:.2f}%,{int(row['Volume'] / 1000)},{row['MA5']:.2f},{row['MA20']:.2f},{data['poc_price']:.2f},{row['ATR_Stop']:.2f},{row['RSI']:.1f},{row['MFI']:.1f},{csv_ab},{csv_pat}")
 
             csv_text = "\n".join(csv_rows)
             csv_bytes = ("\uFEFF" + csv_text).encode('utf-8')
 
             with col_t2:
-                st.download_button(label="📥 下載 CSV 數據", data=csv_bytes,
-                                   file_name=f"{stock_name}_{clean_ticker}_V8.9_Analysis.csv", mime="text/csv",
-                                   width="stretch")
+                st.download_button(label="📥 下載 CSV 數據", data=csv_bytes, file_name=f"{stock_name}_{clean_ticker}_V8.10_Analysis.csv", mime="text/csv", width="stretch")
 
             hist_html = "".join(rows_html)
             table_wrapper = f"""
