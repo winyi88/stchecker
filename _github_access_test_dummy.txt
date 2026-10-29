@@ -1,0 +1,3 @@
+GitHub file access test
+Purpose: verify write, read, and delete permissions.
+This is a temporary dummy file; safe to delete.
